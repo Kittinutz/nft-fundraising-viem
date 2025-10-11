@@ -62,7 +62,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         _baseTokenURI = "https://api.dznft.com/metadata/";
     }
     
-    
+
     /**
      * @dev Update executor role - only owner can do this
      */
@@ -74,7 +74,14 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         }
         emit ExecutorRoleUpdated(account, grant);
     }
-    
+
+    /**
+     * @dev Check if an address has executor role
+     */
+    function isExecutor(address account) external view returns (bool) {
+        return hasRole(EXECUTOR_ROLE, account);
+    }
+
     /**
      * @dev Mint NFT with investment round data - only executor can call
      */
