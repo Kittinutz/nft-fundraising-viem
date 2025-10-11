@@ -17,6 +17,7 @@
     "test": "test"
   },
   "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
     "abitype": "^1.1.0",
     "adm-zip": "^0.4.16",
     "aes-js": "^4.0.0-beta.5",
