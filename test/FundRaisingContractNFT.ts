@@ -125,7 +125,7 @@ describe("FundRaisingContractNFT", async function () {
     ]);
     assert.equal(nftBalance, 2n);
   });
-  it("Owner withdraw fund and investor Redeem as 6 month be success", async function () {
+  it("Owner withdraw fund and investor Redeem as  6, 12 month be success", async function () {
     const fundContract = await viem.getContractAt(
       "FundRaisingContractNFT",
       fundContractNFT?.address
@@ -185,7 +185,6 @@ describe("FundRaisingContractNFT", async function () {
 
     assert.equal(formatEther(fundContractBalace), "30");
 
-    // await fundContractW2.write.redeemNFT([nftToken1]);
     const block = await publicClient.getBlock();
 
     await networkHelpers.mine();
@@ -194,9 +193,99 @@ describe("FundRaisingContractNFT", async function () {
 
     await fundContractW2.write.claimRewardRound([0n]);
 
-    // const afterClaimW2Balance = await usdt.read.balanceOf([
-    //   wallet2.account.address,
-    // ]);
-    // assert.equal(formatEther(afterClaimW2Balance), "30");
+    const afterClaimW2Balance = await usdt.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(formatEther(afterClaimW2Balance), "30");
+
+    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
+    await usdt.write.approve([fundContract.address, 1030n * 10n ** 18n]);
+    await fundContract.write.addReward([0n, 1030n]);
+    const fundContractBalace2 = await usdt.read.balanceOf([
+      fundContract.address,
+    ]);
+
+    assert.equal(formatEther(fundContractBalace2), "1030");
+    await networkHelpers.mine();
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 10);
+    await networkHelpers.mine();
+    //** redeem nft 2 nft =  1000 * 6 % = 60 and 60 /2 = 30 + principle after complete one year with claim one*/
+
+    await fundContractW2.write.claimRewardRound([0n]);
+    const afterClaimW2Balance2 = await usdt.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(formatEther(afterClaimW2Balance2), "1060");
+  });
+  it("Owner withdraw fund and investor Redeem as  12 month be success", async function () {
+    const fundContract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address
+    );
+    const fundContractW2 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address,
+      {
+        client: { wallet: wallet2 },
+      }
+    );
+
+    const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
+    //** mint w2 1000 usdt */
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+
+    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
+      client: { wallet: wallet2 },
+    });
+    await fundContract.write.createInvestmentRound([
+      "Round 1",
+      500n,
+      6n,
+      1000n,
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+      Date.now() + 365 * 24 * 60 * 60 * 1000,
+    ]);
+    //** approve from w2 1000 usdt */
+
+    await usdtW2.write.approve([fundContract.address, 1000n * 10n ** 18n]);
+    /** invest 500*2 usdt */
+    await fundContractW2.write.investInRound([0n, 2n]);
+    const balanceOfW2 = await usdt.read.balanceOf([wallet2.account.address]);
+    assert.equal(formatEther(balanceOfW2), "0");
+    const round = await fundContract.read.investmentRounds([0n]);
+    assert.equal(round[4], 1000n);
+    const nftBalance = await nftContract.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(nftBalance, 2n);
+    await fundContract.write.withdrawFund([0n]);
+    const ownerUsdt = await usdt.read.balanceOf([wallet1.account.address]);
+    assert.equal(formatEther(ownerUsdt), "2000");
+    //** fast forward time 6 month */
+
+    //** redeem nft 2 nft 1000 *6 % = 120/2 month = 60 */
+    const beforeClaimW2Balance = await usdt.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(formatEther(beforeClaimW2Balance), "0");
+    await usdt.write.mint([wallet1.account.address, 1060n * 10n ** 18n]);
+    await usdt.write.approve([fundContract.address, 1060n * 10n ** 18n]);
+    await fundContract.write.addReward([0n, 1060n]);
+    const fundContractBalace = await usdt.read.balanceOf([
+      fundContract.address,
+    ]);
+
+    assert.equal(formatEther(fundContractBalace), "1060");
+
+    await networkHelpers.mine();
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 13);
+    await networkHelpers.mine();
+
+    await fundContractW2.write.claimRewardRound([0n]);
+
+    const afterClaimW2Balance = await usdt.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(formatEther(afterClaimW2Balance), "1060");
   });
 });

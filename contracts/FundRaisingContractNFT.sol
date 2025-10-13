@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "hardhat/console.sol";
 import "./DZNFT.sol";
 
 /**
@@ -332,7 +331,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         // First pass: calculate total payout
         (uint256 totalPayout, uint256 processedCount) = _calculateRoundPayout(userTokenIds);
-        console.log("Total Payout:", totalPayout);
         require(processedCount > 0, "No eligible NFTs to claim");
         require(totalPayout > 0, "No amount to claim");
         require(
@@ -357,6 +355,10 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
 
     /**
      * @dev Internal function to calculate total payout for round claim
+     * Logic:
+     * - 0-180 days: No claims allowed
+     * - 180-365 days: Can claim rewards only (first 180 days worth)
+     * - 365+ days: Full redemption (principal + any unclaimed rewards)
      */
     function _calculateRoundPayout(uint256[] memory tokenIds) 
         internal 
@@ -370,25 +372,40 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             if (investment.redeemed) continue;
             
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
+            
+            // Skip if less than 180 days (no claims allowed yet)
             if (timeSincePurchase < 180 days) continue;
             
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
-            uint256 rewardAmount = ((principal * investment.rewardPercentage)/100);
+            uint256 fullRewardAmount = (principal * investment.rewardPercentage) / 100;
             
             if (timeSincePurchase >= 365 days) {
-                // Full redemption
-                totalPayout += investment.rewardClaimed ? principal : principal + rewardAmount;
-            } else if (!investment.rewardClaimed) {
-                // Early reward only
-
-                totalPayout += rewardAmount;
+                // Phase 3: Full redemption after 365 days
+                if (investment.rewardClaimed) {
+                    // Only principal + remaining reward if reward was already claimed at 180 days
+                    totalPayout += principal + (fullRewardAmount / 2);
+                } else {
+                    // Principal + full reward if never claimed at 180 days
+                    totalPayout += principal + fullRewardAmount;
+                }
+            } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
+                // Phase 2: First reward claim between 180-365 days
+                totalPayout += (fullRewardAmount / 2) ;
             }
+            // If reward already claimed and not yet 365 days, no payout
+            
             processedCount++;
         }
     }
 
     /**
      * @dev Internal function to process round claims
+     */
+    /**
+     * @dev Internal function to process round claims and update NFT states
+     * Logic:
+     * - 180-365 days: Mark reward as claimed, lock transfers until 365 days
+     * - 365+ days: Full redemption (burn NFT)
      */
     function _processRoundClaims(uint256[] memory tokenIds) internal {
         for (uint256 i = 0; i < tokenIds.length; i++) {
@@ -398,22 +415,25 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             if (investment.redeemed) continue;
             
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
+            
+            // Skip if less than 180 days (no claims allowed)
             if (timeSincePurchase < 180 days) continue;
             
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
             uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
             
             if (timeSincePurchase >= 365 days) {
-                // Full redemption
+                // Phase 3: Full redemption after 365 days - burn NFT
                 uint256 payout = investment.rewardClaimed ? principal : principal + rewardAmount;
                 dzNFT.markAsRedeemed(tokenIds[i]);
                 dzNFT.unlockTransfer(tokenIds[i]);
                 emit RedemptionMade(tokenIds[i], msg.sender, payout);
-            } else if (!investment.rewardClaimed) {
-                // Early reward only
+            } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
+                // Phase 2: First reward claim between 180-365 days - mark claimed and lock transfers
                 dzNFT.markRewardClaimed(tokenIds[i]);
                 emit EarlyRewardClaimed(tokenIds[i], msg.sender, rewardAmount);
             }
+            // If between 180-365 days and already claimed, or not eligible, no action
         }
     }
     
