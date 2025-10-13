@@ -31,6 +31,7 @@
     "chokidar": "^4.0.3",
     "color-convert": "^2.0.1",
     "color-name": "^1.1.4",
+    "dayjs": "^1.11.18",
     "debug": "^4.4.3",
     "diff-sequences": "^29.6.3",
     "elliptic": "^6.6.1",

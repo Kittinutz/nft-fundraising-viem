@@ -167,9 +167,9 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Invest in a specific round with USDT
+     * @dev Invest in a specific round with token amount
      */
-    function investInRound(uint256 roundId, uint256 usdtAmount) 
+    function investInRound(uint256 roundId, uint256 tokenAmount) 
         external 
         nonReentrant 
         whenNotPaused 
@@ -178,17 +178,18 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         investmentOpen(roundId) 
         returns (uint256) 
     {
-        require(usdtAmount > 0, "Investment amount must be greater than 0");
+        require(block.timestamp < investmentRounds[roundId].closeDateInvestment, "Investment period has closed");
+        require(tokenAmount > 0, "Token amount must be greater than 0");
         
         InvestmentRound storage round = investmentRounds[roundId];
         
-        // Calculate tokens to receive
-        uint256 tokensToReceive = (usdtAmount * 1e18) / round.priceUSDTperToken;
-        require(tokensToReceive > 0, "Investment too small");
+        // Calculate USDT required for the token amount
+        uint256 usdtAmount = (tokenAmount * round.priceUSDTperToken) / 1e18;
+        require(usdtAmount > 0, "Token amount too small");
         
         // Check if enough tokens available
         require(
-            round.tokensSold + tokensToReceive <= round.totalTokenOpenInvestment,
+            round.tokensSold + tokenAmount <= round.totalTokenOpenInvestment,
             "Not enough tokens available in this round"
         );
         
@@ -198,29 +199,36 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "USDT transfer failed"
         );
         
-        // Mint NFT representing the investment
-        uint256 tokenId = dzNFT.mintNFT(
-            msg.sender,
-            roundId,
-            round.priceUSDTperToken,
-            round.rewardPercentage,
-            tokensToReceive,
-            round.closeDateInvestment,
-            round.endDateInvestment
-        );
+        // Calculate USDT per token for individual NFTs
+        uint256 usdtPerToken = round.priceUSDTperToken / 1e18;
+        uint256[] memory tokenIds = new uint256[](tokenAmount);
         
-        // Update round data
-        round.tokensSold += tokensToReceive;
+        for(uint256 i = 0; i < tokenAmount; i++){
+            // Mint NFT representing 1 token investment
+            uint256 tokenId = dzNFT.mintNFT(
+                msg.sender,
+                roundId,
+                round.priceUSDTperToken,
+                round.rewardPercentage,
+                1, // Each NFT represents 1 token
+                round.closeDateInvestment,
+                round.endDateInvestment
+            );
+            
+            // Track investments
+            roundTokenIds[roundId].push(tokenId);
+            userInvestments[msg.sender].push(tokenId);
+            userNFTsInRound[roundId][msg.sender].push(tokenId);
+            tokenIds[i] = tokenId;
+            
+            emit InvestmentMade(roundId, tokenId, msg.sender, usdtPerToken, 1);
+        }
+        
+        // Update round data (once, outside the loop)
+        round.tokensSold += tokenAmount;
         totalUSDTRaised += usdtAmount;
         
-        // Track investments
-        roundTokenIds[roundId].push(tokenId);
-        userInvestments[msg.sender].push(tokenId);
-        userNFTsInRound[roundId][msg.sender].push(tokenId);
-        
-        emit InvestmentMade(roundId, tokenId, msg.sender, usdtAmount, tokensToReceive);
-        
-        return tokenId;
+        return tokenIds[0]; // Return first token ID for backward compatibility
     }
     
     /**
