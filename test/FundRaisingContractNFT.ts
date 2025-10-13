@@ -118,4 +118,45 @@ describe("FundRaisingContractNFT", async function () {
     ]);
     assert.equal(nftBalance, 2n);
   });
+  it("Redeem as 6 month be success", async function () {
+    const fundContract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address
+    );
+    const fundContractW2 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address,
+      {
+        client: { wallet: wallet2 },
+      }
+    );
+
+    const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
+    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
+      client: { wallet: wallet2 },
+    });
+    await fundContract.write.createInvestmentRound([
+      "Round 1",
+      500n * 10n ** 18n,
+      6n,
+      1000n,
+      Date.now() + 30 * 24 * 60 * 60 * 1000,
+      Date.now() + 365 * 24 * 60 * 60 * 1000,
+    ]);
+    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
+    await usdtW2.write.approve([
+      fundContract.address,
+      1000000000n * 10n ** 18n,
+    ]);
+
+    await fundContractW2.write.investInRound([0n, 2n]);
+
+    const round = await fundContract.read.investmentRounds([0n]);
+    console.log(round);
+    assert.equal(round[4], 1000n);
+    const nftBalance = await nftContract.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(nftBalance, 2n);
+  });
 });

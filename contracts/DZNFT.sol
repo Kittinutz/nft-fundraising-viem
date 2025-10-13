@@ -32,6 +32,8 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         uint256 endDateInvestment;
         address originalBuyer;
         bool redeemed;
+        bool rewardClaimed; // New: tracks if early reward was claimed
+        bool transferLocked; // New: locks transfer even after redemption
         string metadata; // Additional metadata stamp
     }
     
@@ -48,6 +50,8 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     event NFTBurned(uint256 indexed tokenId, address indexed owner);
     event MetadataStamped(uint256 indexed tokenId, string metadata);
     event ExecutorRoleUpdated(address indexed account, bool granted);
+    event RewardClaimed(uint256 indexed tokenId, address indexed claimer);
+    event TransferLockUpdated(uint256 indexed tokenId, bool locked);
     event BaseURIUpdated(string newBaseURI);
     event TokenURIUpdated(uint256 indexed tokenId, string newTokenURI);
     
@@ -114,6 +118,8 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
             endDateInvestment: endDateInvestment,
             originalBuyer: to,
             redeemed: false,
+            rewardClaimed: false,
+            transferLocked: false,
             metadata: ""
         });
         
@@ -159,7 +165,64 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         require(tokenExists[tokenId], "Token does not exist");
         investmentData[tokenId].redeemed = true;
     }
-    
+
+    /**
+     * @dev Mark NFT reward as claimed and lock transfer - only executor can call
+     */
+    function markRewardClaimed(uint256 tokenId) external onlyExecutor {
+        require(tokenExists[tokenId], "Token does not exist");
+        require(!investmentData[tokenId].rewardClaimed, "Reward already claimed");
+        
+        investmentData[tokenId].rewardClaimed = true;
+        investmentData[tokenId].transferLocked = true;
+        
+        emit RewardClaimed(tokenId, ownerOf(tokenId));
+    }
+
+    /**
+     * @dev Check if early reward can be claimed (first 6 months)
+     */
+    function canClaimEarlyReward(uint256 tokenId) external view returns (bool) {
+        require(tokenExists[tokenId], "Token does not exist");
+        InvestmentData memory data = investmentData[tokenId];
+        
+        // Can claim if 6 months have passed since purchase and reward not yet claimed
+        return (block.timestamp >= data.purchaseTimestamp + 180 days) && 
+               !data.rewardClaimed && 
+               !data.redeemed;
+    }
+
+    /**
+     * @dev Check if full redemption is available (after 1 year)
+     */
+    function canFullyRedeem(uint256 tokenId) external view returns (bool) {
+        require(tokenExists[tokenId], "Token does not exist");
+        InvestmentData memory data = investmentData[tokenId];
+        
+        // Can fully redeem after 1 year and not yet redeemed
+        return (block.timestamp >= data.purchaseTimestamp + 365 days) && 
+               !data.redeemed;
+    }
+
+    /**
+     * @dev Unlock transfer after full redemption - only executor can call
+     */
+    function unlockTransfer(uint256 tokenId) external onlyExecutor {
+        require(tokenExists[tokenId], "Token does not exist");
+        require(investmentData[tokenId].redeemed, "Must be redeemed first");
+        
+        investmentData[tokenId].transferLocked = false;
+        emit TransferLockUpdated(tokenId, false);
+    }
+
+    /**
+     * @dev Check if token transfer is locked
+     */
+    function isTransferLocked(uint256 tokenId) external view returns (bool) {
+        require(tokenExists[tokenId], "Token does not exist");
+        return investmentData[tokenId].transferLocked;
+    }
+
     /**
      * @dev Get investment data for a token
      */
@@ -284,7 +347,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     }
     
     /**
-     * @dev Override to prevent transfer when paused
+     * @dev Override to prevent transfer when paused or locked
      */
     function _update(address to, uint256 tokenId, address auth)
         internal
@@ -293,6 +356,12 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         returns (address)
     {
         require(!paused(), "Token transfer while paused");
+        
+        // Check if transfer is locked (only if not minting or burning)
+        if (to != address(0) && auth != address(0)) {
+            require(!investmentData[tokenId].transferLocked, "Token transfer locked");
+        }
+        
         return super._update(to, tokenId, auth);
     }
 }
