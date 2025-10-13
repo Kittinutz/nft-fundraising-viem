@@ -364,4 +364,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         
         return super._update(to, tokenId, auth);
     }
+    function transferOwner(address newOwner) public onlyOwner {
+        transferOwnership(newOwner);
+    }
 }

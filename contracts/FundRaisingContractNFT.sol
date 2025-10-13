@@ -15,6 +15,13 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     DZNFT public immutable dzNFT;
     IERC20 public usdtToken;
     
+    // Decimal constants
+    uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
+    
+    // IMPORTANT: Price format expectations
+    // priceUSDTperToken should be provided in 18 decimal format
+    // Example: For $10 USDT per token, set priceUSDTperToken = 10 * 10^18 = 10000000000000000000
+    
     struct InvestmentRound {
         uint256 roundId;
         string roundName;
@@ -112,7 +119,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         investmentRounds[roundId] = InvestmentRound({
             roundId: roundId,
             roundName: roundName,
-            priceUSDTperToken: priceUSDTperToken,
+            priceUSDTperToken: priceUSDTperToken * 10 ** USDT_DECIMALS,
             rewardPercentage: rewardPercentage,
             totalTokenOpenInvestment: totalTokenOpenInvestment,
             tokensSold: 0,
@@ -128,7 +135,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         emit RoundCreated(
             roundId,
             roundName,
-            priceUSDTperToken,
+            priceUSDTperToken* 10 ** USDT_DECIMALS,
             rewardPercentage,
             totalTokenOpenInvestment,
             closeDateInvestment,
@@ -187,8 +194,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         InvestmentRound storage round = investmentRounds[roundId];
         
-        // Calculate USDT required for the token amount
-        uint256 usdtAmount = (tokenAmount * round.priceUSDTperToken) / 1e18;
+        uint256 usdtAmount = (tokenAmount * round.priceUSDTperToken);
         require(usdtAmount > 0, "Token amount too small");
         
         // Check if enough tokens available
@@ -197,14 +203,14 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "Not enough tokens available in this round"
         );
         
-        // Transfer USDT from investor to contract
+        // Transfer USDT from investor to contract (amount in USDT 18 decimals)
         require(
             usdtToken.transferFrom(msg.sender, address(this), usdtAmount),
             "USDT transfer failed"
         );
         
         // Calculate USDT per token for individual NFTs
-        uint256 usdtPerToken = round.priceUSDTperToken / 1e18;
+        uint256 usdtPerToken = round.priceUSDTperToken;
         uint256[] memory tokenIds = new uint256[](tokenAmount);
         
         for(uint256 i = 0; i < tokenAmount; i++){
@@ -254,8 +260,10 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         // Check if at least 6 months have passed
         require(timeSincePurchase >= 180 days, "Must wait at least 6 months");
         
-        // Calculate amounts
-        uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / 1e18;
+        // Calculate amounts with proper decimal handling
+        // investment.priceUSDTperToken is in 18 decimals format
+        // investment.totalTokenOpenInvestment is number of tokens (no decimals)
+        uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
         uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
         
         uint256 totalPayout;
@@ -363,7 +371,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
             if (timeSincePurchase < 180 days) continue;
             
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / 1e18;
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
             uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
             
             if (timeSincePurchase >= 365 days) {
@@ -390,7 +398,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
             if (timeSincePurchase < 180 days) continue;
             
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / 1e18;
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
             uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
             
             if (timeSincePurchase >= 365 days) {
@@ -543,7 +551,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         for (uint256 i = 0; i < userTokenIds.length; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
-            uint256 investmentUSDT = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / 1e18;
+            uint256 investmentUSDT = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
             totalUSDT += investmentUSDT;
             totalTokens += investment.totalTokenOpenInvestment;
         }
@@ -579,7 +587,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         for (uint256 i = 0; i < userTokenIds.length; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / 1e18;
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
             uint256 reward = (principal * investment.rewardPercentage) / 10000;
             
             totalUSDTInvested += principal;
@@ -655,12 +663,12 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     {
         require(amount > 0, "Amount must be greater than 0");
         require(
-            usdtToken.transferFrom(msg.sender, address(this), amount),
+            usdtToken.transferFrom(msg.sender, address(this), amount * 10 ** USDT_DECIMALS),
             "USDT transfer failed"
         );
-        
-        roundUSDTLedger[roundId] += amount;
-        emit RoundFunded(roundId, amount);
+
+        roundUSDTLedger[roundId] += amount * 10 ** USDT_DECIMALS;
+        emit RoundFunded(roundId, amount * 10 ** USDT_DECIMALS);
     }
 
     /**
@@ -679,7 +687,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "USDT transfer failed"
         );
     }
-    
     /**
      * @dev Emergency withdraw USDT (only owner)
      */
@@ -822,5 +829,55 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         returns (bool) 
     {
         return dzNFT.canFullyRedeem(tokenId);
+    }
+
+    /**
+     * @dev Get calculation of reward amount and principal amount for a specific round
+     */
+    function getCalculationRewardAmount(uint256 roundId) 
+        external 
+        view 
+        roundExists(roundId) 
+        returns (
+            uint256 totalPrincipalAmount,
+            uint256 totalRewardAmount,
+            uint256 totalNFTs,
+            uint256 redeemedNFTs,
+            uint256 rewardClaimedNFTs
+        ) 
+    {
+        uint256[] memory tokenIds = roundTokenIds[roundId];
+        totalPrincipalAmount = 0;
+        totalRewardAmount = 0;
+        totalNFTs = tokenIds.length;
+        redeemedNFTs = 0;
+        rewardClaimedNFTs = 0;
+        
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
+            
+            // Calculate principal and reward for this NFT (in USDT decimals)
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
+            uint256 reward = (principal * investment.rewardPercentage) / 10000;
+            
+            totalPrincipalAmount += principal;
+            totalRewardAmount += reward;
+            
+            // Count status
+            if (investment.redeemed) {
+                redeemedNFTs++;
+            }
+            if (investment.rewardClaimed) {
+                rewardClaimedNFTs++;
+            }
+        }
+        
+        return (
+            totalPrincipalAmount,
+            totalRewardAmount,
+            totalNFTs,
+            redeemedNFTs,
+            rewardClaimedNFTs
+        );
     }
 }
