@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "hardhat/console.sol";
 import "./DZNFT.sol";
 
 /**
@@ -19,13 +20,13 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
     
     // IMPORTANT: Price format expectations
-    // priceUSDTperToken should be provided in 18 decimal format
-    // Example: For $10 USDT per token, set priceUSDTperToken = 10 * 10^18 = 10000000000000000000
+    // tokenPrice should be provided in 18 decimal format
+    // Example: For $10 USDT per token, set tokenPrice = 10 * 10^18 = 10000000000000000000
     
     struct InvestmentRound {
         uint256 roundId;
         string roundName;
-        uint256 priceUSDTperToken;
+        uint256 tokenPrice;
         uint256 rewardPercentage;
         uint256 totalTokenOpenInvestment;
         uint256 tokensSold;
@@ -48,7 +49,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     event RoundCreated(
         uint256 indexed roundId,
         string roundName,
-        uint256 priceUSDTperToken,
+        uint256 tokenPrice,
         uint256 rewardPercentage,
         uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
@@ -101,14 +102,14 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
      */
     function createInvestmentRound(
         string memory roundName,
-        uint256 priceUSDTperToken,
+        uint256 tokenPrice,
         uint256 rewardPercentage,
         uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyOwner returns (uint256) {
         require(bytes(roundName).length > 0, "Round name cannot be empty");
-        require(priceUSDTperToken > 0, "Price must be greater than 0");
+        require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage (0-10000)");
         require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
@@ -119,7 +120,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         investmentRounds[roundId] = InvestmentRound({
             roundId: roundId,
             roundName: roundName,
-            priceUSDTperToken: priceUSDTperToken * 10 ** USDT_DECIMALS,
+            tokenPrice: tokenPrice * 10 ** USDT_DECIMALS,
             rewardPercentage: rewardPercentage,
             totalTokenOpenInvestment: totalTokenOpenInvestment,
             tokensSold: 0,
@@ -135,7 +136,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         emit RoundCreated(
             roundId,
             roundName,
-            priceUSDTperToken* 10 ** USDT_DECIMALS,
+            tokenPrice* 10 ** USDT_DECIMALS,
             rewardPercentage,
             totalTokenOpenInvestment,
             closeDateInvestment,
@@ -194,7 +195,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         InvestmentRound storage round = investmentRounds[roundId];
         
-        uint256 usdtAmount = (tokenAmount * round.priceUSDTperToken);
+        uint256 usdtAmount = (tokenAmount * round.tokenPrice);
         require(usdtAmount > 0, "Token amount too small");
         
         // Check if enough tokens available
@@ -210,7 +211,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         );
         
         // Calculate USDT per token for individual NFTs
-        uint256 usdtPerToken = round.priceUSDTperToken;
+        uint256 usdtPerToken = round.tokenPrice;
         uint256[] memory tokenIds = new uint256[](tokenAmount);
         
         for(uint256 i = 0; i < tokenAmount; i++){
@@ -218,7 +219,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             uint256 tokenId = dzNFT.mintNFT(
                 msg.sender,
                 roundId,
-                round.priceUSDTperToken,
+                round.tokenPrice,
                 round.rewardPercentage,
                 1, // Each NFT represents 1 token
                 round.closeDateInvestment,
@@ -252,26 +253,26 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     {
         require(dzNFT.ownerOf(tokenId) == msg.sender, "Not the owner of this NFT");
         
-        DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenId);
-        require(!investment.redeemed, "Investment already redeemed");
+        DZNFT.InvestmentData memory nftToken = dzNFT.getInvestmentData(tokenId);
+        require(!nftToken.redeemed, "Investment already redeemed");
         
-        uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
+        uint256 timeSincePurchase = block.timestamp - nftToken.purchaseTimestamp;
         
         // Check if at least 6 months have passed
         require(timeSincePurchase >= 180 days, "Must wait at least 6 months");
         
         // Calculate amounts with proper decimal handling
-        // investment.priceUSDTperToken is in 18 decimals format
-        // investment.totalTokenOpenInvestment is number of tokens (no decimals)
-        uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
-        uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
+        // nftToken.tokenPrice is in 18 decimals format
+        // nftToken.totalTokenOpenInvestment is number of tokens (no decimals)
+        uint256 principal = (nftToken.totalTokenOpenInvestment * nftToken.tokenPrice) / (10 ** USDT_DECIMALS);
+        uint256 rewardAmount = (principal * nftToken.rewardPercentage) / 10000;
         
         uint256 totalPayout;
         bool isFullRedemption = timeSincePurchase >= 365 days; // 1 year
         
         if (isFullRedemption) {
             // Phase 3: Full redemption (after 1 year)
-            if (investment.rewardClaimed) {
+            if (nftToken.rewardClaimed) {
                 // Only principal if reward was already claimed
                 totalPayout = principal;
             } else {
@@ -280,7 +281,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             }
         } else {
             // Phase 2: Early reward only (6 months to 1 year)
-            require(!investment.rewardClaimed, "Reward already claimed");
+            require(!nftToken.rewardClaimed, "Reward already claimed");
             totalPayout = rewardAmount;
         }
         
@@ -292,7 +293,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         // Check round has sufficient funds
         require(
-            roundUSDTLedger[investment.roundId] >= totalPayout,
+            roundUSDTLedger[nftToken.roundId] >= totalPayout,
             "Insufficient round USDT balance"
         );
         
@@ -308,7 +309,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         }
         
         // Update round ledger
-        roundUSDTLedger[investment.roundId] -= totalPayout;
+        roundUSDTLedger[nftToken.roundId] -= totalPayout;
         
         // Transfer USDT to investor
         require(
@@ -331,7 +332,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         // First pass: calculate total payout
         (uint256 totalPayout, uint256 processedCount) = _calculateRoundPayout(userTokenIds);
-        
+        console.log("Total Payout:", totalPayout);
         require(processedCount > 0, "No eligible NFTs to claim");
         require(totalPayout > 0, "No amount to claim");
         require(
@@ -371,14 +372,15 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
             if (timeSincePurchase < 180 days) continue;
             
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
-            uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
+            uint256 rewardAmount = ((principal * investment.rewardPercentage)/100);
             
             if (timeSincePurchase >= 365 days) {
                 // Full redemption
                 totalPayout += investment.rewardClaimed ? principal : principal + rewardAmount;
             } else if (!investment.rewardClaimed) {
                 // Early reward only
+
                 totalPayout += rewardAmount;
             }
             processedCount++;
@@ -398,7 +400,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
             if (timeSincePurchase < 180 days) continue;
             
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
             uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
             
             if (timeSincePurchase >= 365 days) {
@@ -551,7 +553,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         for (uint256 i = 0; i < userTokenIds.length; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
-            uint256 investmentUSDT = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
+            uint256 investmentUSDT = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
             totalUSDT += investmentUSDT;
             totalTokens += investment.totalTokenOpenInvestment;
         }
@@ -587,7 +589,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         for (uint256 i = 0; i < userTokenIds.length; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
             uint256 reward = (principal * investment.rewardPercentage) / 10000;
             
             totalUSDTInvested += principal;
@@ -857,7 +859,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             
             // Calculate principal and reward for this NFT (in USDT decimals)
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.priceUSDTperToken) / (10 ** USDT_DECIMALS);
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
             uint256 reward = (principal * investment.rewardPercentage) / 10000;
             
             totalPrincipalAmount += principal;

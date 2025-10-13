@@ -24,7 +24,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     struct InvestmentData {
         uint256 tokenId;
         uint256 roundId;
-        uint256 priceUSDTperToken;
+        uint256 tokenPrice;
         uint256 rewardPercentage;
         uint256 totalTokenOpenInvestment;
         uint256 purchaseTimestamp;
@@ -44,7 +44,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         uint256 indexed tokenId, 
         address indexed buyer, 
         uint256 indexed roundId, 
-        uint256 priceUSDTperToken,
+        uint256 tokenPrice,
         uint256 rewardPercentage
     );
     event NFTBurned(uint256 indexed tokenId, address indexed owner);
@@ -92,14 +92,14 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     function mintNFT(
         address to,
         uint256 roundId,
-        uint256 priceUSDTperToken,
+        uint256 tokenPrice,
         uint256 rewardPercentage,
         uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
-        require(priceUSDTperToken > 0, "Price must be greater than 0");
+        require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage");
         require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
@@ -110,7 +110,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         investmentData[tokenId] = InvestmentData({
             tokenId: tokenId,
             roundId: roundId,
-            priceUSDTperToken: priceUSDTperToken,
+            tokenPrice: tokenPrice,
             rewardPercentage: rewardPercentage,
             totalTokenOpenInvestment: totalTokenOpenInvestment,
             purchaseTimestamp: block.timestamp,
@@ -126,7 +126,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         tokenExists[tokenId] = true;
         _safeMint(to, tokenId);
         
-        emit NFTMinted(tokenId, to, roundId, priceUSDTperToken, rewardPercentage);
+        emit NFTMinted(tokenId, to, roundId, tokenPrice, rewardPercentage);
         return tokenId;
     }
     

@@ -171,7 +171,7 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(ownerUsdt), "2000");
     //** fast forward time 6 month */
 
-    //** redeem nft */
+    //** redeem nft 2 nft 1000 *6 % = 120/2 month = 60 */
     const beforeClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
@@ -179,25 +179,19 @@ describe("FundRaisingContractNFT", async function () {
     await usdt.write.mint([wallet1.account.address, 30n * 10n ** 18n]);
     await usdt.write.approve([fundContract.address, 30n * 10n ** 18n]);
     await fundContract.write.addReward([0n, 30n]);
-    const nftToken1 = await nftContract.read.investmentData([0n]);
-    const nftToken2 = await nftContract.read.investmentData([1n]);
-    console.log({
-      nftToken1,
-      nftToken2,
-    });
+    const fundContractBalace = await usdt.read.balanceOf([
+      fundContract.address,
+    ]);
+
+    assert.equal(formatEther(fundContractBalace), "30");
 
     // await fundContractW2.write.redeemNFT([nftToken1]);
     const block = await publicClient.getBlock();
-    console.log({
-      block,
-    });
+
     await networkHelpers.mine();
-    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 12);
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 6);
     await networkHelpers.mine();
-    const block2 = await publicClient.getBlock();
-    console.log({
-      block2,
-    });
+
     await fundContractW2.write.claimRewardRound([0n]);
 
     // const afterClaimW2Balance = await usdt.read.balanceOf([
