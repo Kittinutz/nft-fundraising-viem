@@ -18,6 +18,10 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     // Decimal constants
     uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
     
+    // Gas optimization constants
+    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 100;  // Prevent DoS attacks
+    uint256 public constant MAX_BATCH_CLAIM = 50;             // Limit batch operations
+    
     // IMPORTANT: Price format expectations
     // tokenPrice should be provided in 18 decimal format
     // Example: For $10 USDT per token, set tokenPrice = 10 * 10^18 = 10000000000000000000
@@ -191,6 +195,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     {
         require(block.timestamp < investmentRounds[roundId].closeDateInvestment, "Investment period has closed");
         require(tokenAmount > 0, "Token amount must be greater than 0");
+        require(tokenAmount <= MAX_TOKENS_PER_INVESTMENT, "Token amount exceeds maximum allowed per transaction");
         
         InvestmentRound storage round = investmentRounds[roundId];
         
@@ -209,35 +214,59 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "USDT transfer failed"
         );
         
-        // Calculate USDT per token for individual NFTs
-        uint256 usdtPerToken = round.tokenPrice;
-        uint256[] memory tokenIds = new uint256[](tokenAmount);
+        // Cache variables to reduce storage reads
+        address investor = msg.sender;
+        uint256 tokenPrice = round.tokenPrice;
+        uint256 rewardPercentage = round.rewardPercentage;
+        uint256 closeDateInvestment = round.closeDateInvestment;
+        uint256 endDateInvestment = round.endDateInvestment;
+        
+        // Use batch minting for gas optimization when minting multiple NFTs
+        uint256[] memory tokenIds;
+        if (tokenAmount > 1) {
+            // Batch mint for multiple tokens
+            tokenIds = dzNFT.batchMintNFT(
+                investor,
+                tokenAmount,
+                roundId,
+                tokenPrice,
+                rewardPercentage,
+                1, // Each NFT represents 1 token
+                closeDateInvestment,
+                endDateInvestment
+            );
+        } else {
+            // Single mint for one token
+            tokenIds = new uint256[](1);
+            tokenIds[0] = dzNFT.mintNFT(
+                investor,
+                roundId,
+                tokenPrice,
+                rewardPercentage,
+                1,
+                closeDateInvestment,
+                endDateInvestment
+            );
+        }
+        
+        // Batch update storage arrays (more gas efficient than individual pushes)
+        uint256[] storage roundTokens = roundTokenIds[roundId];
+        uint256[] storage userTokens = userInvestments[investor];
+        uint256[] storage userRoundTokens = userNFTsInRound[roundId][investor];
         
         for(uint256 i = 0; i < tokenAmount; i++){
-            // Mint NFT representing 1 token investment
-            uint256 tokenId = dzNFT.mintNFT(
-                msg.sender,
-                roundId,
-                round.tokenPrice,
-                round.rewardPercentage,
-                1, // Each NFT represents 1 token
-                round.closeDateInvestment,
-                round.endDateInvestment
-            );
+            roundTokens.push(tokenIds[i]);
+            userTokens.push(tokenIds[i]);
+            userRoundTokens.push(tokenIds[i]);
             
-            // Track investments
-            roundTokenIds[roundId].push(tokenId);
-            userInvestments[msg.sender].push(tokenId);
-            userNFTsInRound[roundId][msg.sender].push(tokenId);
-            tokenIds[i] = tokenId;
-            
-            emit InvestmentMade(roundId, tokenId, msg.sender, usdtPerToken, 1);
+            // Emit event with cached values
+            emit InvestmentMade(roundId, tokenIds[i], investor, tokenPrice, 1);
         }
         
         // Update round data (once, outside the loop)
         round.tokensSold += tokenAmount;
         totalUSDTRaised += usdtAmount;
-        roundUSDTLedger[roundId] += usdtAmount; // Track USDT for this specific round
+        roundUSDTLedger[roundId] += usdtAmount;
         
         return tokenIds[0]; // Return first token ID for backward compatibility
     }
@@ -263,8 +292,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         // Calculate amounts with proper decimal handling
         // nftToken.tokenPrice is in 18 decimals format
         // nftToken.totalTokenOpenInvestment is number of tokens (no decimals)
-        uint256 principal = (nftToken.totalTokenOpenInvestment * nftToken.tokenPrice) / (10 ** USDT_DECIMALS);
-        uint256 rewardAmount = (principal * nftToken.rewardPercentage) / 10000;
+        uint256 principal = (nftToken.totalTokenOpenInvestment * nftToken.tokenPrice);
+        uint256 rewardAmount = (principal * nftToken.rewardPercentage) / 100;
         
         uint256 totalPayout;
         bool isFullRedemption = timeSincePurchase >= 365 days; // 1 year
@@ -272,16 +301,16 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         if (isFullRedemption) {
             // Phase 3: Full redemption (after 1 year)
             if (nftToken.rewardClaimed) {
-                // Only principal if reward was already claimed
-                totalPayout = principal;
+                // Only principal + remaining half reward if reward was already claimed
+                totalPayout = principal + (rewardAmount / 2);
             } else {
                 // Principal + full reward if reward was not claimed early
                 totalPayout = principal + rewardAmount;
             }
         } else {
-            // Phase 2: Early reward only (6 months to 1 year)
+            // Phase 2: Early reward only (6 months to 1 year) - half reward
             require(!nftToken.rewardClaimed, "Reward already claimed");
-            totalPayout = rewardAmount;
+            totalPayout = rewardAmount / 2;
         }
         
         require(totalPayout > 0, "No amount to claim");
@@ -328,6 +357,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     {
         uint256[] memory userTokenIds = userNFTsInRound[roundId][msg.sender];
         require(userTokenIds.length > 0, "No NFTs in this round");
+        require(userTokenIds.length <= MAX_BATCH_CLAIM, "Too many NFTs to claim at once, please split into smaller batches");
         
         // First pass: calculate total payout
         (uint256 totalPayout, uint256 processedCount) = _calculateRoundPayout(userTokenIds);
@@ -359,19 +389,25 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
      * - 0-180 days: No claims allowed
      * - 180-365 days: Can claim rewards only (first 180 days worth)
      * - 365+ days: Full redemption (principal + any unclaimed rewards)
+     * 
+     * Gas Optimized: Caches msg.sender and block.timestamp to reduce external calls
      */
     function _calculateRoundPayout(uint256[] memory tokenIds) 
         internal 
         view 
         returns (uint256 totalPayout, uint256 processedCount) 
     {
+        address sender = msg.sender; // Cache msg.sender to reduce SLOAD operations
+        uint256 currentTime = block.timestamp; // Cache timestamp to reduce external calls
+        
         for (uint256 i = 0; i < tokenIds.length; i++) {
-            if (dzNFT.ownerOf(tokenIds[i]) != msg.sender) continue;
+            // First check ownership (cheaper operation)
+            if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
             
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             if (investment.redeemed) continue;
             
-            uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
+            uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
             
             // Skip if less than 180 days (no claims allowed yet)
             if (timeSincePurchase < 180 days) continue;
@@ -382,15 +418,15 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             if (timeSincePurchase >= 365 days) {
                 // Phase 3: Full redemption after 365 days
                 if (investment.rewardClaimed) {
-                    // Only principal + remaining reward if reward was already claimed at 180 days
+                    // Only principal + remaining half reward if reward was already claimed at 180 days
                     totalPayout += principal + (fullRewardAmount / 2);
                 } else {
                     // Principal + full reward if never claimed at 180 days
                     totalPayout += principal + fullRewardAmount;
                 }
             } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
-                // Phase 2: First reward claim between 180-365 days
-                totalPayout += (fullRewardAmount / 2) ;
+                // Phase 2: First reward claim between 180-365 days (half reward)
+                totalPayout += (fullRewardAmount / 2);
             }
             // If reward already claimed and not yet 365 days, no payout
             
@@ -406,32 +442,39 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
      * Logic:
      * - 180-365 days: Mark reward as claimed, lock transfers until 365 days
      * - 365+ days: Full redemption (burn NFT)
+     * 
+     * Gas Optimized: Caches external calls and reduces repeated calculations
      */
     function _processRoundClaims(uint256[] memory tokenIds) internal {
+        address sender = msg.sender; // Cache msg.sender
+        uint256 currentTime = block.timestamp; // Cache timestamp
+        
         for (uint256 i = 0; i < tokenIds.length; i++) {
-            if (dzNFT.ownerOf(tokenIds[i]) != msg.sender) continue;
+            // First check ownership (cheaper operation)
+            if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
             
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             if (investment.redeemed) continue;
             
-            uint256 timeSincePurchase = block.timestamp - investment.purchaseTimestamp;
+            uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
             
             // Skip if less than 180 days (no claims allowed)
             if (timeSincePurchase < 180 days) continue;
             
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
-            uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
+            // Cache calculations to avoid recalculating in events
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
+            uint256 rewardAmount = (principal * investment.rewardPercentage) / 100;
             
             if (timeSincePurchase >= 365 days) {
                 // Phase 3: Full redemption after 365 days - burn NFT
-                uint256 payout = investment.rewardClaimed ? principal : principal + rewardAmount;
+                uint256 payout = investment.rewardClaimed ? principal + (rewardAmount / 2) : principal + rewardAmount;
                 dzNFT.markAsRedeemed(tokenIds[i]);
                 dzNFT.unlockTransfer(tokenIds[i]);
-                emit RedemptionMade(tokenIds[i], msg.sender, payout);
+                emit RedemptionMade(tokenIds[i], sender, payout);
             } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
-                // Phase 2: First reward claim between 180-365 days - mark claimed and lock transfers
+                // Phase 2: First reward claim between 180-365 days - mark claimed and lock transfers (half reward)
                 dzNFT.markRewardClaimed(tokenIds[i]);
-                emit EarlyRewardClaimed(tokenIds[i], msg.sender, rewardAmount);
+                emit EarlyRewardClaimed(tokenIds[i], sender, rewardAmount / 2);
             }
             // If between 180-365 days and already claimed, or not eligible, no action
         }
@@ -610,7 +653,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         for (uint256 i = 0; i < userTokenIds.length; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
-            uint256 reward = (principal * investment.rewardPercentage) / 10000;
+            uint256 reward = (principal * investment.rewardPercentage) / 100;
             
             totalUSDTInvested += principal;
             totalTokens += investment.totalTokenOpenInvestment;
@@ -856,6 +899,10 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     /**
      * @dev Get calculation of reward amount and principal amount for a specific round
      */
+    /**
+     * @dev Get calculation of reward amounts for a round
+     * Gas Optimized: Early return for empty rounds and reduced external calls
+     */
     function getCalculationRewardAmount(uint256 roundId) 
         external 
         view 
@@ -869,23 +916,30 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         ) 
     {
         uint256[] memory tokenIds = roundTokenIds[roundId];
+        totalNFTs = tokenIds.length;
+        
+        // Early return if no tokens to save gas
+        if (totalNFTs == 0) {
+            return (0, 0, 0, 0, 0);
+        }
+        
+        // Initialize counters
         totalPrincipalAmount = 0;
         totalRewardAmount = 0;
-        totalNFTs = tokenIds.length;
         redeemedNFTs = 0;
         rewardClaimedNFTs = 0;
         
-        for (uint256 i = 0; i < tokenIds.length; i++) {
+        for (uint256 i = 0; i < totalNFTs; i++) {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             
             // Calculate principal and reward for this NFT (in USDT decimals)
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
-            uint256 reward = (principal * investment.rewardPercentage) / 10000;
+            uint256 reward = (principal * investment.rewardPercentage) / 100;
             
             totalPrincipalAmount += principal;
             totalRewardAmount += reward;
             
-            // Count status
+            // Efficient status counting
             if (investment.redeemed) {
                 redeemedNFTs++;
             }

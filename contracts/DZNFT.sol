@@ -129,6 +129,68 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         emit NFTMinted(tokenId, to, roundId, tokenPrice, rewardPercentage);
         return tokenId;
     }
+
+    /**
+     * @dev Batch mint NFTs for gas optimization
+     * @param to Address to mint NFTs to
+     * @param count Number of NFTs to mint
+     * @param roundId Investment round ID
+     * @param tokenPrice Price per token
+     * @param rewardPercentage Reward percentage
+     * @param totalTokenOpenInvestment Total tokens per NFT
+     * @param closeDateInvestment Close date for investment
+     * @param endDateInvestment End date for investment
+     * @return tokenIds Array of minted token IDs
+     */
+    function batchMintNFT(
+        address to,
+        uint256 count,
+        uint256 roundId,
+        uint256 tokenPrice,
+        uint256 rewardPercentage,
+        uint256 totalTokenOpenInvestment,
+        uint256 closeDateInvestment,
+        uint256 endDateInvestment
+    ) external onlyExecutor whenNotPaused returns (uint256[] memory tokenIds) {
+        require(to != address(0), "Invalid recipient address");
+        require(count > 0 && count <= 100, "Invalid count (1-100)");
+        require(tokenPrice > 0, "Price must be greater than 0");
+        require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage");
+        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
+        require(closeDateInvestment > block.timestamp, "Close date must be in future");
+        require(endDateInvestment > closeDateInvestment, "End date must be after close date");
+        
+        tokenIds = new uint256[](count);
+        uint256 purchaseTime = block.timestamp; // Cache timestamp for gas optimization
+        
+        for (uint256 i = 0; i < count; i++) {
+            uint256 tokenId = _nextTokenId++;
+            tokenIds[i] = tokenId;
+            
+            investmentData[tokenId] = InvestmentData({
+                tokenId: tokenId,
+                roundId: roundId,
+                tokenPrice: tokenPrice,
+                rewardPercentage: rewardPercentage,
+                totalTokenOpenInvestment: totalTokenOpenInvestment,
+                purchaseTimestamp: purchaseTime,
+                closeDateInvestment: closeDateInvestment,
+                endDateInvestment: endDateInvestment,
+                originalBuyer: to,
+                redeemed: false,
+                rewardClaimed: false,
+                transferLocked: false,
+                metadata: ""
+            });
+            
+            tokenExists[tokenId] = true;
+            _safeMint(to, tokenId);
+            
+            emit NFTMinted(tokenId, to, roundId, tokenPrice, rewardPercentage);
+        }
+        
+        return tokenIds;
+    }
     
     /**
      * @dev Burn NFT - only token owner can burn
@@ -364,6 +426,42 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         
         return super._update(to, tokenId, auth);
     }
+
+    /**
+     * @dev Batch check ownership for gas optimization
+     * @param tokenIds Array of token IDs to check
+     * @param user Address to check ownership for
+     * @return ownedTokens Array of booleans indicating ownership
+     */
+    function batchCheckOwnership(uint256[] memory tokenIds, address user) 
+        external 
+        view 
+        returns (bool[] memory ownedTokens) 
+    {
+        ownedTokens = new bool[](tokenIds.length);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            ownedTokens[i] = (ownerOf(tokenIds[i]) == user);
+        }
+        return ownedTokens;
+    }
+
+    /**
+     * @dev Batch get investment data for gas optimization
+     * @param tokenIds Array of token IDs to get data for
+     * @return investments Array of investment data
+     */
+    function batchGetInvestmentData(uint256[] memory tokenIds) 
+        external 
+        view 
+        returns (InvestmentData[] memory investments) 
+    {
+        investments = new InvestmentData[](tokenIds.length);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            investments[i] = investmentData[tokenIds[i]];
+        }
+        return investments;
+    }
+
     function transferOwner(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
