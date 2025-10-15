@@ -956,4 +956,202 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             rewardClaimedNFTs
         );
     }
+
+    /**
+     * @dev Get comprehensive round information including statistics
+     * @param roundId The ID of the round to get information for
+     * @return roundInfo Basic round information from InvestmentRound struct
+     * @return totalUSDTRaisedInRound Total USDT raised in this round
+     * @return totalInvestors Number of unique investors in this round
+     * @return availableTokens Remaining tokens available for investment
+     * @return isInvestmentOpen Whether the round is currently open for investment
+     * @return isRedemptionOpen Whether redemption period has started (1 year passed)
+     * @return daysUntilClose Days remaining until investment close (0 if closed)
+     * @return daysUntilRedemption Days remaining until redemption opens (0 if open)
+     */
+    function getRoundInformation(uint256 roundId) 
+        external 
+        view 
+        roundExists(roundId) 
+        returns (
+            InvestmentRound memory roundInfo,
+            uint256 totalUSDTRaisedInRound,
+            uint256 totalInvestors,
+            uint256 availableTokens,
+            bool isInvestmentOpen,
+            bool isRedemptionOpen,
+            uint256 daysUntilClose,
+            uint256 daysUntilRedemption
+        ) 
+    {
+        roundInfo = investmentRounds[roundId];
+        
+        // Calculate total USDT raised
+        totalUSDTRaisedInRound = roundInfo.tokensSold * roundInfo.tokenPrice;
+        
+        // Get unique investors count
+        (address[] memory investors,) = this.getRoundInvestors(roundId);
+        totalInvestors = investors.length;
+        
+        // Calculate available tokens
+        availableTokens = roundInfo.totalTokenOpenInvestment - roundInfo.tokensSold;
+        
+        // Check if investment period is open
+        isInvestmentOpen = roundInfo.isActive && 
+                          block.timestamp <= roundInfo.closeDateInvestment &&
+                          availableTokens > 0;
+        
+        // Check if redemption period is open (1 year after close date)
+        uint256 redemptionStartDate = roundInfo.closeDateInvestment + 365 days;
+        isRedemptionOpen = block.timestamp >= redemptionStartDate;
+        
+        // Calculate days until close
+        if (block.timestamp >= roundInfo.closeDateInvestment) {
+            daysUntilClose = 0;
+        } else {
+            daysUntilClose = (roundInfo.closeDateInvestment - block.timestamp) / 1 days;
+        }
+        
+        // Calculate days until redemption opens
+        if (block.timestamp >= redemptionStartDate) {
+            daysUntilRedemption = 0;
+        } else {
+            daysUntilRedemption = (redemptionStartDate - block.timestamp) / 1 days;
+        }
+        
+        return (
+            roundInfo,
+            totalUSDTRaisedInRound,
+            totalInvestors,
+            availableTokens,
+            isInvestmentOpen,
+            isRedemptionOpen,
+            daysUntilClose,
+            daysUntilRedemption
+        );
+    }
+
+    /**
+     * @dev Get summary of all rounds
+     * @return roundIds Array of all round IDs
+     * @return roundNames Array of round names
+     * @return roundStatuses Array indicating if rounds are active
+     * @return totalRaised Array of total USDT raised per round
+     * @return isInvestmentOpenArray Array indicating if investment is open for each round
+     */
+    function getAllRoundsSummary() 
+        external 
+        view 
+        returns (
+            uint256[] memory roundIds,
+            string[] memory roundNames,
+            bool[] memory roundStatuses,
+            uint256[] memory totalRaised,
+            bool[] memory isInvestmentOpenArray
+        ) 
+    {
+        uint256 totalRounds = totalRoundsCreated;
+        
+        roundIds = new uint256[](totalRounds);
+        roundNames = new string[](totalRounds);
+        roundStatuses = new bool[](totalRounds);
+        totalRaised = new uint256[](totalRounds);
+        isInvestmentOpenArray = new bool[](totalRounds);
+        
+        for (uint256 i = 0; i < totalRounds; i++) {
+            uint256 roundId = i + 1; // Round IDs start from 1
+            InvestmentRound memory round = investmentRounds[roundId];
+            
+            roundIds[i] = roundId;
+            roundNames[i] = round.roundName;
+            roundStatuses[i] = round.isActive;
+            totalRaised[i] = round.tokensSold * round.tokenPrice;
+            
+            // Check if investment is open
+            uint256 availableTokens = round.totalTokenOpenInvestment - round.tokensSold;
+            isInvestmentOpenArray[i] = round.isActive && 
+                               block.timestamp <= round.closeDateInvestment &&
+                               availableTokens > 0;
+        }
+        
+        return (roundIds, roundNames, roundStatuses, totalRaised, isInvestmentOpenArray);
+    }
+
+    /**
+     * @dev Get round performance metrics
+     * @param roundId The ID of the round to get metrics for
+     * @return soldPercentage Percentage of tokens sold (in basis points, 10000 = 100%)
+     * @return averageInvestmentSize Average investment size in USDT
+     * @return totalRewardsPaid Total rewards paid out so far
+     * @return totalPrincipalRedeemed Total principal amount redeemed
+     * @return earlyRewardsClaimed Number of early rewards claimed (6 months)
+     * @return fullRedemptions Number of full redemptions (1 year)
+     */
+    function getRoundMetrics(uint256 roundId) 
+        external 
+        view 
+        roundExists(roundId) 
+        returns (
+            uint256 soldPercentage,
+            uint256 averageInvestmentSize,
+            uint256 totalRewardsPaid,
+            uint256 totalPrincipalRedeemed,
+            uint256 earlyRewardsClaimed,
+            uint256 fullRedemptions
+        ) 
+    {
+        InvestmentRound memory round = investmentRounds[roundId];
+        uint256[] memory tokenIds = roundTokenIds[roundId];
+        
+        // Calculate sold percentage (in basis points)
+        if (round.totalTokenOpenInvestment > 0) {
+            soldPercentage = (round.tokensSold * 10000) / round.totalTokenOpenInvestment;
+        }
+        
+        // Calculate average investment size
+        (address[] memory investors,) = this.getRoundInvestors(roundId);
+        if (investors.length > 0) {
+            uint256 totalRaised = round.tokensSold * round.tokenPrice;
+            averageInvestmentSize = totalRaised / investors.length;
+        }
+        
+        // Calculate rewards and redemptions
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
+            
+            if (investment.rewardClaimed) {
+                earlyRewardsClaimed++;
+                // Calculate reward amount (half of the reward for early claim)
+                uint256 principalAmount = investment.totalTokenOpenInvestment * round.tokenPrice;
+                uint256 fullReward = (principalAmount * round.rewardPercentage) / 100;
+                totalRewardsPaid += fullReward / 2;
+            }
+            
+            if (investment.redeemed) {
+                fullRedemptions++;
+                uint256 principalAmount = investment.totalTokenOpenInvestment * round.tokenPrice;
+                totalPrincipalRedeemed += principalAmount;
+                
+                // Add remaining reward for full redemption
+                if (investment.rewardClaimed) {
+                    // Already claimed early reward, add remaining half
+                    uint256 fullReward = (principalAmount * round.rewardPercentage) / 100;
+                    totalRewardsPaid += fullReward / 2;
+                } else {
+                    // Full reward for full redemption without early claim
+                    uint256 fullReward = (principalAmount * round.rewardPercentage) / 100;
+                    totalRewardsPaid += fullReward;
+                }
+            }
+        }
+        
+        return (
+            soldPercentage,
+            averageInvestmentSize,
+            totalRewardsPaid,
+            totalPrincipalRedeemed,
+            earlyRewardsClaimed,
+            fullRedemptions
+        );
+    }
 }
