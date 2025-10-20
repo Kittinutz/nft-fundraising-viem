@@ -5,7 +5,7 @@ export default buildModule("FundRaisingContractNFT", (m) => {
     "Mock USDT",
     "MUSDT",
     18n,
-    1_000_000_000n,
+    10000000n * 10n ** 18n,
   ]);
   const fundRaisingContractNFT = m.contract("FundRaisingContractNFT", [
     dzNft,

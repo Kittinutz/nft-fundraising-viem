@@ -48,6 +48,51 @@ describe("FundRaisingContractNFT", async function () {
       true
     );
   });
+
+  it("Should test pagination with sorting after creating round", async function () {
+    const contract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address
+    );
+
+    // Create a test round
+    const roundName = "Test Round 1";
+    const tokenPrice = parseEther("10"); // 10 USDT per token
+    const rewardPercentage = 1200n; // 12%
+    const totalTokens = 1000n;
+    const currentTime = Math.floor(Date.now() / 1000);
+    const closeDate = BigInt(currentTime + 86400 * 30); // 30 days from now
+    const endDate = BigInt(currentTime + 86400 * 365); // 1 year from now
+
+    // Create the round
+    await contract.write.createInvestmentRound([
+      roundName,
+      tokenPrice,
+      rewardPercentage,
+      totalTokens,
+      closeDate,
+      endDate,
+    ]);
+
+    // Test getAllRoundsDetailedPaginated with sorting
+    const offset = 0n;
+    const limit = 10n;
+    const sortField = 2; // CREATED_AT (enum value)
+    const sortDirection = 1; // DESC (enum value)
+
+    const roundList = await contract.read.getAllRoundsDetailedPaginated([
+      offset,
+      limit,
+      sortField,
+      sortDirection,
+    ]);
+
+    // Verify we got results
+    assert.equal(roundList[0].length, 1); // rounds array should have 1 round
+    assert.equal(roundList[1].length, 1); // investorCounts array should have 1 entry
+    assert.equal(roundList[0][0].roundName, roundName); // verify round name
+    assert.equal(roundList[0][0].roundId, 0n); // verify round ID is 0
+  });
   it("Mint USDT to Wallet should be success", async function () {
     const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);

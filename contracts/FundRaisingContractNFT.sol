@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
+import "hardhat/console.sol";
 
 /**
  * @title FundRaisingContractNFT
@@ -21,6 +22,10 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     // Gas optimization constants
     uint256 public constant MAX_TOKENS_PER_INVESTMENT = 100;  // Prevent DoS attacks
     uint256 public constant MAX_BATCH_CLAIM = 50;             // Limit batch operations
+    
+    // Sort order constants
+    enum SortField { ID, NAME, CREATED_AT, CLOSE_DATE, TOTAL_RAISED, TOKENS_SOLD, REWARD_PERCENTAGE }
+    enum SortDirection { ASC, DESC }
     
     // IMPORTANT: Price format expectations
     // tokenPrice should be provided in 18 decimal format
@@ -1075,6 +1080,346 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         }
         
         return (roundIds, roundNames, roundStatuses, totalRaised, isInvestmentOpenArray);
+    }
+
+    /**
+     * @dev Get paginated summary of rounds with enhanced information and sorting
+     * @param offset Starting position (0-based)
+     * @param limit Maximum number of rounds to return (recommended: 10-50)
+     * @param sortField Field to sort by (0=ID, 1=NAME, 2=CREATED_AT, 3=CLOSE_DATE, 4=TOTAL_RAISED, 5=TOKENS_SOLD, 6=REWARD_PERCENTAGE)
+     * @param sortDirection Direction to sort (0=ASC, 1=DESC)
+     * @return roundIds Array of round IDs
+     * @return roundNames Array of round names
+     * @return roundStatuses Array indicating if rounds are active
+     * @return totalRaised Array of total USDT raised per round
+     * @return isInvestmentOpenArray Array indicating if investment is open for each round
+     * @return availableTokensArray Array of available tokens for each round
+     * @return daysUntilCloseArray Array of days until close for each round
+     * @return totalPages Total number of pages available
+     * @return currentPage Current page number (1-based)
+     * @return hasMore Whether there are more rounds available
+     */
+    function getAllRoundsSummaryPaginated(
+        uint256 offset, 
+        uint256 limit,
+        SortField sortField,
+        SortDirection sortDirection
+    ) 
+        external 
+        view 
+        returns (
+            uint256[] memory roundIds,
+            string[] memory roundNames,
+            bool[] memory roundStatuses,
+            uint256[] memory totalRaised,
+            bool[] memory isInvestmentOpenArray,
+            uint256[] memory availableTokensArray,
+            uint256[] memory daysUntilCloseArray,
+            uint256 totalPages,
+            uint256 currentPage,
+            bool hasMore
+        ) 
+    {
+        uint256 totalRounds = totalRoundsCreated;
+        require(limit > 0 && limit <= 100, "Limit must be between 1 and 100");
+        require(offset < totalRounds, "Offset exceeds total rounds");
+        
+        // Calculate pagination info
+        totalPages = (totalRounds + limit - 1) / limit; // Ceiling division
+        currentPage = (offset / limit) + 1;
+        
+        // Get sorted round indices
+        uint256[] memory sortedIndices = _getSortedRoundIndices(sortField, sortDirection);
+        
+        // Calculate actual number of rounds to return
+        uint256 remainingRounds = totalRounds - offset;
+        uint256 actualLimit = remainingRounds > limit ? limit : remainingRounds;
+        hasMore = offset + actualLimit < totalRounds;
+        
+        // Initialize arrays with actual size needed
+        roundIds = new uint256[](actualLimit);
+        roundNames = new string[](actualLimit);
+        roundStatuses = new bool[](actualLimit);
+        totalRaised = new uint256[](actualLimit);
+        isInvestmentOpenArray = new bool[](actualLimit);
+        availableTokensArray = new uint256[](actualLimit);
+        daysUntilCloseArray = new uint256[](actualLimit);
+        
+        // Cache current time for efficiency
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < actualLimit; i++) {
+            uint256 sortedIndex = offset + i;
+            uint256 roundId = sortedIndices[sortedIndex]; // Round IDs start from 0, not 1
+            InvestmentRound memory round = investmentRounds[roundId];
+            
+            roundIds[i] = roundId;
+            roundNames[i] = round.roundName;
+            roundStatuses[i] = round.isActive;
+            totalRaised[i] = round.tokensSold * round.tokenPrice;
+            
+            // Calculate available tokens
+            uint256 availableTokens = round.totalTokenOpenInvestment - round.tokensSold;
+            availableTokensArray[i] = availableTokens;
+            
+            // Check if investment is open
+            isInvestmentOpenArray[i] = round.isActive && 
+                                      currentTime <= round.closeDateInvestment &&
+                                      availableTokens > 0;
+            
+            // Calculate days until close
+            if (currentTime >= round.closeDateInvestment) {
+                daysUntilCloseArray[i] = 0;
+            } else {
+                daysUntilCloseArray[i] = (round.closeDateInvestment - currentTime) / 1 days;
+            }
+        }
+        
+        return (
+            roundIds,
+            roundNames,
+            roundStatuses,
+            totalRaised,
+            isInvestmentOpenArray,
+            availableTokensArray,
+            daysUntilCloseArray,
+            totalPages,
+            currentPage,
+            hasMore
+        );
+    }
+
+    /**
+     * @dev Get paginated detailed round information with sorting (more comprehensive)
+     * @param offset Starting position (0-based)
+     * @param limit Maximum number of rounds to return (recommended: 5-20)
+     * @param sortField Field to sort by (0=ID, 1=NAME, 2=CREATED_AT, 3=CLOSE_DATE, 4=TOTAL_RAISED, 5=TOKENS_SOLD, 6=REWARD_PERCENTAGE)
+     * @param sortDirection Direction to sort (0=ASC, 1=DESC)
+     * @return rounds Array of complete round information
+     * @return investorCounts Array of unique investor counts per round
+     * @return totalPages Total number of pages available
+     * @return currentPage Current page number (1-based)
+     * @return hasMore Whether there are more rounds available
+     */
+    function getAllRoundsDetailedPaginated(
+        uint256 offset, 
+        uint256 limit,
+        SortField sortField,
+        SortDirection sortDirection
+    ) 
+        external 
+        view 
+        returns (
+            InvestmentRound[] memory rounds,
+            uint256[] memory investorCounts,
+            uint256 totalPages,
+            uint256 currentPage,
+            bool hasMore
+        ) 
+    {
+      
+        uint256 totalRounds = totalRoundsCreated;
+        require(limit > 0 && limit <= 50, "Limit must be between 1 and 50");
+        require(offset < totalRounds, "Offset exceeds total rounds");
+        
+        // Calculate pagination info
+        totalPages = (totalRounds + limit - 1) / limit;
+        currentPage = (offset / limit) + 1;
+        
+        // Get sorted round indices
+        uint256[] memory sortedIndices = _getSortedRoundIndices(sortField, sortDirection);
+        
+        // Calculate actual number of rounds to return
+        uint256 remainingRounds = totalRounds - offset;
+        uint256 actualLimit = remainingRounds > limit ? limit : remainingRounds;
+        hasMore = offset + actualLimit < totalRounds;
+        
+        // Initialize arrays
+        rounds = new InvestmentRound[](actualLimit);
+        investorCounts = new uint256[](actualLimit);
+        
+        for (uint256 i = 0; i < actualLimit; i++) {
+            uint256 sortedIndex = offset + i;
+            uint256 roundId = sortedIndices[sortedIndex]; // Round IDs start from 0, not 1
+            
+            rounds[i] = investmentRounds[roundId];
+            
+            // Get investor count (this is more expensive but provides complete data)
+            (address[] memory investors,) = this.getRoundInvestors(roundId);
+            investorCounts[i] = investors.length;
+        }
+        
+        return (rounds, investorCounts, totalPages, currentPage, hasMore);
+    }
+
+    /**
+     * @dev Convenience function - Get paginated summary with default sorting (by ID ASC)
+     * @param offset Starting position (0-based)
+     * @param limit Maximum number of rounds to return
+     */
+    function getAllRoundsSummaryPaginatedDefault(uint256 offset, uint256 limit) 
+        external 
+        view 
+        returns (
+            uint256[] memory roundIds,
+            string[] memory roundNames,
+            bool[] memory roundStatuses,
+            uint256[] memory totalRaised,
+            bool[] memory isInvestmentOpenArray,
+            uint256[] memory availableTokensArray,
+            uint256[] memory daysUntilCloseArray,
+            uint256 totalPages,
+            uint256 currentPage,
+            bool hasMore
+        ) 
+    {
+        return this.getAllRoundsSummaryPaginated(offset, limit, SortField.ID, SortDirection.ASC);
+    }
+
+    /**
+     * @dev Convenience function - Get detailed paginated rounds with default sorting (by ID ASC)
+     * @param offset Starting position (0-based)
+     * @param limit Maximum number of rounds to return
+     */
+    function getAllRoundsDetailedPaginatedDefault(uint256 offset, uint256 limit) 
+        external 
+        view 
+        returns (
+            InvestmentRound[] memory rounds,
+            uint256[] memory investorCounts,
+            uint256 totalPages,
+            uint256 currentPage,
+            bool hasMore
+        ) 
+    {
+        return this.getAllRoundsDetailedPaginated(offset, limit, SortField.ID, SortDirection.ASC);
+    }
+
+    /**
+     * @dev Get total count of rounds for pagination calculation
+     * @return totalRounds Total number of rounds created
+     * @return activeRounds Number of currently active rounds
+     */
+    function getRoundsCount() 
+        external 
+        view 
+        returns (uint256 totalRounds, uint256 activeRounds) 
+    {
+        totalRounds = totalRoundsCreated;
+        activeRounds = 0;
+        
+        for (uint256 i = 0; i < _nextRoundId; i++) {
+            if (investmentRounds[i].exists && investmentRounds[i].isActive) {
+                activeRounds++;
+            }
+        }
+        
+        return (totalRounds, activeRounds);
+    }
+
+    /**
+     * @dev Internal function to get sorted round indices based on sort field and direction
+     * Gas optimized: Uses efficient sorting algorithm for small datasets
+     * @param sortField Field to sort by
+     * @param sortDirection Direction to sort (ASC or DESC)
+     * @return sortedIndices Array of round indices in sorted order (0-based)
+     */
+    function _getSortedRoundIndices(SortField sortField, SortDirection sortDirection) 
+        internal 
+        view 
+        returns (uint256[] memory sortedIndices) 
+    {
+        // First, collect all existing round IDs
+        uint256[] memory tempIndices = new uint256[](_nextRoundId);
+        uint256 existingCount = 0;
+        
+        for (uint256 i = 0; i < _nextRoundId; i++) {
+            if (investmentRounds[i].exists) {
+                tempIndices[existingCount] = i;
+                existingCount++;
+            }
+        }
+        
+        // Create array with only existing rounds
+        sortedIndices = new uint256[](existingCount);
+        for (uint256 i = 0; i < existingCount; i++) {
+            sortedIndices[i] = tempIndices[i];
+        }
+        
+        // Bubble sort implementation (efficient for small datasets in blockchain)
+        for (uint256 i = 0; i < existingCount - 1; i++) {
+            for (uint256 j = 0; j < existingCount - i - 1; j++) {
+                bool shouldSwap = _compareRounds(
+                    sortedIndices[j], 
+                    sortedIndices[j + 1], 
+                    sortField, 
+                    sortDirection
+                );
+                
+                if (shouldSwap) {
+                    // Swap indices
+                    uint256 temp = sortedIndices[j];
+                    sortedIndices[j] = sortedIndices[j + 1];
+                    sortedIndices[j + 1] = temp;
+                }
+            }
+        }
+        
+        return sortedIndices;
+    }
+    
+    /**
+     * @dev Internal function to compare two rounds based on sort criteria
+     * @param indexA First round index
+     * @param indexB Second round index  
+     * @param sortField Field to compare
+     * @param sortDirection Sort direction
+     * @return shouldSwap True if rounds should be swapped
+     */
+    function _compareRounds(
+        uint256 indexA, 
+        uint256 indexB, 
+        SortField sortField, 
+        SortDirection sortDirection
+    ) 
+        internal 
+        view 
+        returns (bool shouldSwap) 
+    {
+        uint256 roundIdA = indexA; // Round IDs start from 0
+        uint256 roundIdB = indexB; // Round IDs start from 0
+        InvestmentRound memory roundA = investmentRounds[roundIdA];
+        InvestmentRound memory roundB = investmentRounds[roundIdB];
+        
+        bool aIsGreater;
+        
+        if (sortField == SortField.ID) {
+            aIsGreater = roundA.roundId > roundB.roundId;
+        } else if (sortField == SortField.NAME) {
+            // Simple string comparison (basic lexicographic)
+            aIsGreater = keccak256(bytes(roundA.roundName)) > keccak256(bytes(roundB.roundName));
+        } else if (sortField == SortField.CREATED_AT) {
+            aIsGreater = roundA.createdAt > roundB.createdAt;
+        } else if (sortField == SortField.CLOSE_DATE) {
+            aIsGreater = roundA.closeDateInvestment > roundB.closeDateInvestment;
+        } else if (sortField == SortField.TOTAL_RAISED) {
+            uint256 totalRaisedA = roundA.tokensSold * roundA.tokenPrice;
+            uint256 totalRaisedB = roundB.tokensSold * roundB.tokenPrice;
+            aIsGreater = totalRaisedA > totalRaisedB;
+        } else if (sortField == SortField.TOKENS_SOLD) {
+            aIsGreater = roundA.tokensSold > roundB.tokensSold;
+        } else if (sortField == SortField.REWARD_PERCENTAGE) {
+            aIsGreater = roundA.rewardPercentage > roundB.rewardPercentage;
+        }
+        
+        // Apply sort direction
+        if (sortDirection == SortDirection.ASC) {
+            shouldSwap = aIsGreater;
+        } else {
+            shouldSwap = !aIsGreater;
+        }
+        
+        return shouldSwap;
     }
 
     /**
