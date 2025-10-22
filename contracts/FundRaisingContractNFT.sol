@@ -26,6 +26,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     // Sort order constants
     enum SortField { ID, NAME, CREATED_AT, CLOSE_DATE, TOTAL_RAISED, TOKENS_SOLD, REWARD_PERCENTAGE }
     enum SortDirection { ASC, DESC }
+    enum Status { OPEN, CLOSED, COMPLETED , WITHDRAW_FUND, DIVIDEND_PAID }
     
     // IMPORTANT: Price format expectations
     // tokenPrice should be provided in 18 decimal format
@@ -43,6 +44,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         bool isActive;
         bool exists;
         uint256 createdAt;
+        Status status;
     }
     
     mapping(uint256 => InvestmentRound) public investmentRounds;
@@ -51,6 +53,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound; // roundId => user => tokenIds array
     mapping(uint256 => uint256) public roundUSDTLedger; // roundId => USDT balance for each round
     uint256 private _nextRoundId;
+    uint256 public currentRoundId;
     uint256 public totalRoundsCreated;
     uint256 public totalUSDTRaised;
     
@@ -78,6 +81,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     event USDTTokenUpdated(address indexed oldToken, address indexed newToken);
     event RoundFunded(uint256 indexed roundId, uint256 amount);
     event RoundEmergencyWithdraw(uint256 indexed roundId, uint256 amount);
+    event RoundStatusUpdated(uint256 indexed roundId, Status oldStatus, Status newStatus);
     
     modifier roundExists(uint256 roundId) {
         require(investmentRounds[roundId].exists, "Round does not exist");
@@ -124,7 +128,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
         uint256 roundId = _nextRoundId++;
-        
+        currentRoundId = roundId;
         investmentRounds[roundId] = InvestmentRound({
             roundId: roundId,
             roundName: roundName,
@@ -136,7 +140,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             endDateInvestment: endDateInvestment,
             isActive: true,
             exists: true,
-            createdAt: block.timestamp
+            createdAt: block.timestamp,
+            status: Status.OPEN
         });
         
         totalRoundsCreated++;
@@ -306,14 +311,14 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         if (isFullRedemption) {
             // Phase 3: Full redemption (after 1 year)
             if (nftToken.rewardClaimed) {
-                // Only principal + remaining half reward if reward was already claimed
+                // Only principal + remaining half dividend if dividend was already claimed
                 totalPayout = principal + (rewardAmount / 2);
             } else {
-                // Principal + full reward if reward was not claimed early
+                // Principal + full dividend if dividend was not claimed early
                 totalPayout = principal + rewardAmount;
             }
         } else {
-            // Phase 2: Early reward only (6 months to 1 year) - half reward
+            // Phase 2: Early dividend only (6 months to 1 year) - half dividend
             require(!nftToken.rewardClaimed, "Reward already claimed");
             totalPayout = rewardAmount / 2;
         }
@@ -738,6 +743,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         );
 
         roundUSDTLedger[roundId] += amount * 10 ** USDT_DECIMALS;
+        investmentRounds[roundId].status = Status.DIVIDEND_PAID;
         emit RoundFunded(roundId, amount * 10 ** USDT_DECIMALS);
     }
 
@@ -756,6 +762,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             usdtToken.transfer(owner(), amount),
             "USDT transfer failed"
         );
+        investmentRounds[roundId].status = Status.WITHDRAW_FUND;
     }
     /**
      * @dev Emergency withdraw USDT (only owner)
@@ -880,7 +887,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Check if token can claim early reward
+     * @dev Check if token can claim early dividend
      */
     function canTokenClaimEarlyReward(uint256 tokenId) 
         external 
@@ -908,7 +915,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
      * @dev Get calculation of reward amounts for a round
      * Gas Optimized: Early return for empty rounds and reduced external calls
      */
-    function getCalculationRewardAmount(uint256 roundId) 
+    function getCalculationDividendAmount(uint256 roundId) 
         external 
         view 
         roundExists(roundId) 
@@ -1421,15 +1428,44 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         return shouldSwap;
     }
+    
+    /**
+     * @dev Update the status of a specific round
+     * @param roundId The ID of the round to update
+     * @param status The new status to set
+     */
+    function updateStatus(uint256 roundId, Status status) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        Status oldStatus = investmentRounds[roundId].status;
+        investmentRounds[roundId].status = status;
+        emit RoundStatusUpdated(roundId, oldStatus, status);
+    }
+
+    /**
+     * @dev Get the current status of a round
+     * @param roundId The ID of the round to check
+     * @return status The current status of the round
+     */
+    function getRoundStatus(uint256 roundId) 
+        external 
+        view 
+        roundExists(roundId) 
+        returns (Status status) 
+    {
+        return investmentRounds[roundId].status;
+    }
 
     /**
      * @dev Get round performance metrics
      * @param roundId The ID of the round to get metrics for
      * @return soldPercentage Percentage of tokens sold (in basis points, 10000 = 100%)
      * @return averageInvestmentSize Average investment size in USDT
-     * @return totalRewardsPaid Total rewards paid out so far
+     * @return totalRewardsPaid Total Dividends paid out so far
      * @return totalPrincipalRedeemed Total principal amount redeemed
-     * @return earlyRewardsClaimed Number of early rewards claimed (6 months)
+     * @return earlyRewardsClaimed Number of early Dividends claimed (6 months)
      * @return fullRedemptions Number of full redemptions (1 year)
      */
     function getRoundMetrics(uint256 roundId) 
