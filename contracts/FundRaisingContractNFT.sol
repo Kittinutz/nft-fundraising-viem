@@ -1089,112 +1089,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return (roundIds, roundNames, roundStatuses, totalRaised, isInvestmentOpenArray);
     }
 
-    /**
-     * @dev Get paginated summary of rounds with enhanced information and sorting
-     * @param offset Starting position (0-based)
-     * @param limit Maximum number of rounds to return (recommended: 10-50)
-     * @param sortField Field to sort by (0=ID, 1=NAME, 2=CREATED_AT, 3=CLOSE_DATE, 4=TOTAL_RAISED, 5=TOKENS_SOLD, 6=REWARD_PERCENTAGE)
-     * @param sortDirection Direction to sort (0=ASC, 1=DESC)
-     * @return roundIds Array of round IDs
-     * @return roundNames Array of round names
-     * @return roundStatuses Array indicating if rounds are active
-     * @return totalRaised Array of total USDT raised per round
-     * @return isInvestmentOpenArray Array indicating if investment is open for each round
-     * @return availableTokensArray Array of available tokens for each round
-     * @return daysUntilCloseArray Array of days until close for each round
-     * @return totalPages Total number of pages available
-     * @return currentPage Current page number (1-based)
-     * @return hasMore Whether there are more rounds available
-     */
-    function getAllRoundsSummaryPaginated(
-        uint256 offset, 
-        uint256 limit,
-        SortField sortField,
-        SortDirection sortDirection
-    ) 
-        external 
-        view 
-        returns (
-            uint256[] memory roundIds,
-            string[] memory roundNames,
-            bool[] memory roundStatuses,
-            uint256[] memory totalRaised,
-            bool[] memory isInvestmentOpenArray,
-            uint256[] memory availableTokensArray,
-            uint256[] memory daysUntilCloseArray,
-            uint256 totalPages,
-            uint256 currentPage,
-            bool hasMore
-        ) 
-    {
-        uint256 totalRounds = totalRoundsCreated;
-        require(limit > 0 && limit <= 100, "Limit must be between 1 and 100");
-        require(offset < totalRounds, "Offset exceeds total rounds");
-        
-        // Calculate pagination info
-        totalPages = (totalRounds + limit - 1) / limit; // Ceiling division
-        currentPage = (offset / limit) + 1;
-        
-        // Get sorted round indices
-        uint256[] memory sortedIndices = _getSortedRoundIndices(sortField, sortDirection);
-        
-        // Calculate actual number of rounds to return
-        uint256 remainingRounds = totalRounds - offset;
-        uint256 actualLimit = remainingRounds > limit ? limit : remainingRounds;
-        hasMore = offset + actualLimit < totalRounds;
-        
-        // Initialize arrays with actual size needed
-        roundIds = new uint256[](actualLimit);
-        roundNames = new string[](actualLimit);
-        roundStatuses = new bool[](actualLimit);
-        totalRaised = new uint256[](actualLimit);
-        isInvestmentOpenArray = new bool[](actualLimit);
-        availableTokensArray = new uint256[](actualLimit);
-        daysUntilCloseArray = new uint256[](actualLimit);
-        
-        // Cache current time for efficiency
-        uint256 currentTime = block.timestamp;
-        
-        for (uint256 i = 0; i < actualLimit; i++) {
-            uint256 sortedIndex = offset + i;
-            uint256 roundId = sortedIndices[sortedIndex]; // Round IDs start from 0, not 1
-            InvestmentRound memory round = investmentRounds[roundId];
-            
-            roundIds[i] = roundId;
-            roundNames[i] = round.roundName;
-            roundStatuses[i] = round.isActive;
-            totalRaised[i] = round.tokensSold * round.tokenPrice;
-            
-            // Calculate available tokens
-            uint256 availableTokens = round.totalTokenOpenInvestment - round.tokensSold;
-            availableTokensArray[i] = availableTokens;
-            
-            // Check if investment is open
-            isInvestmentOpenArray[i] = round.isActive && 
-                                      currentTime <= round.closeDateInvestment &&
-                                      availableTokens > 0;
-            
-            // Calculate days until close
-            if (currentTime >= round.closeDateInvestment) {
-                daysUntilCloseArray[i] = 0;
-            } else {
-                daysUntilCloseArray[i] = (round.closeDateInvestment - currentTime) / 1 days;
-            }
-        }
-        
-        return (
-            roundIds,
-            roundNames,
-            roundStatuses,
-            totalRaised,
-            isInvestmentOpenArray,
-            availableTokensArray,
-            daysUntilCloseArray,
-            totalPages,
-            currentPage,
-            hasMore
-        );
-    }
+
 
     /**
      * @dev Get paginated detailed round information with sorting (more comprehensive)
@@ -1259,29 +1154,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return (rounds, investorCounts, totalPages, currentPage, hasMore);
     }
 
-    /**
-     * @dev Convenience function - Get paginated summary with default sorting (by ID ASC)
-     * @param offset Starting position (0-based)
-     * @param limit Maximum number of rounds to return
-     */
-    function getAllRoundsSummaryPaginatedDefault(uint256 offset, uint256 limit) 
-        external 
-        view 
-        returns (
-            uint256[] memory roundIds,
-            string[] memory roundNames,
-            bool[] memory roundStatuses,
-            uint256[] memory totalRaised,
-            bool[] memory isInvestmentOpenArray,
-            uint256[] memory availableTokensArray,
-            uint256[] memory daysUntilCloseArray,
-            uint256 totalPages,
-            uint256 currentPage,
-            bool hasMore
-        ) 
-    {
-        return this.getAllRoundsSummaryPaginated(offset, limit, SortField.ID, SortDirection.ASC);
-    }
+
 
     /**
      * @dev Convenience function - Get detailed paginated rounds with default sorting (by ID ASC)
@@ -1456,6 +1329,263 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         returns (Status status) 
     {
         return investmentRounds[roundId].status;
+    }
+
+    /**
+     * @dev Get all investment rounds that a user has participated in with pagination
+     * @param user The address of the user to check
+     * @param offset Starting position (0-based)
+     * @param limit Maximum number of rounds to return (recommended: 10-50)
+     * @return userRounds Array of round information where user has invested
+     * @return userInvestmentSummaries Array of investment summaries per round
+     * @return totalUserRounds Total number of rounds user participated in
+     * @return totalPages Total number of pages available
+     * @return currentPage Current page number (1-based)
+     * @return hasMore Whether there are more rounds available
+     */
+    function getUserInvestmentRoundsPaginated(
+        address user,
+        uint256 offset,
+        uint256 limit
+    )
+        external
+        view
+        returns (
+            InvestmentRound[] memory userRounds,
+            UserInvestmentSummary[] memory userInvestmentSummaries,
+            uint256 totalUserRounds,
+            uint256 totalPages,
+            uint256 currentPage,
+            bool hasMore
+        )
+    {
+        require(limit > 0 && limit <= 100, "Limit must be between 1 and 100");
+        
+        // First, get all rounds where user has investments
+        uint256[] memory userRoundIds = _getUserParticipatedRounds(user);
+        totalUserRounds = userRoundIds.length;
+        
+        require(offset < totalUserRounds || totalUserRounds == 0, "Offset exceeds total user rounds");
+        
+        // Calculate pagination info
+        totalPages = totalUserRounds > 0 ? (totalUserRounds + limit - 1) / limit : 0;
+        currentPage = totalUserRounds > 0 ? (offset / limit) + 1 : 0;
+        
+        // Calculate actual number of rounds to return
+        uint256 remainingRounds = totalUserRounds > offset ? totalUserRounds - offset : 0;
+        uint256 actualLimit = remainingRounds > limit ? limit : remainingRounds;
+        hasMore = offset + actualLimit < totalUserRounds;
+        
+        if (actualLimit == 0) {
+            return (
+                new InvestmentRound[](0),
+                new UserInvestmentSummary[](0),
+                totalUserRounds,
+                totalPages,
+                currentPage,
+                hasMore
+            );
+        }
+        
+        // Initialize arrays
+        userRounds = new InvestmentRound[](actualLimit);
+        userInvestmentSummaries = new UserInvestmentSummary[](actualLimit);
+        
+        for (uint256 i = 0; i < actualLimit; i++) {
+            uint256 roundId = userRoundIds[offset + i];
+            userRounds[i] = investmentRounds[roundId];
+            userInvestmentSummaries[i] = _getUserInvestmentSummaryForRound(roundId, user);
+        }
+        
+        return (
+            userRounds,
+            userInvestmentSummaries,
+            totalUserRounds,
+            totalPages,
+            currentPage,
+            hasMore
+        );
+    }
+
+    /**
+     * @dev Struct to hold user investment summary data for a specific round
+     */
+    struct UserInvestmentSummary {
+        uint256 roundId;
+        uint256 nftCount;
+        uint256 totalUSDTInvested;
+        uint256 totalTokens;
+        uint256 expectedReward;
+        uint256 totalExpectedPayout;
+        uint256 claimableAmount;
+        bool hasMaturedInvestments;
+        bool hasRedeemedInvestments;
+        bool canClaimEarlyReward;
+        bool canFullyRedeem;
+    }
+
+    /**
+     * @dev Get investment summary for a specific user in a specific round (internal helper)
+     */
+    function _getUserInvestmentSummaryForRound(uint256 roundId, address user)
+        internal
+        view
+        returns (UserInvestmentSummary memory summary)
+    {
+        uint256[] memory userTokenIds = userNFTsInRound[roundId][user];
+        
+        summary.roundId = roundId;
+        summary.nftCount = userTokenIds.length;
+        
+        if (userTokenIds.length == 0) {
+            return summary;
+        }
+        
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < userTokenIds.length; i++) {
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
+            uint256 reward = (principal * investment.rewardPercentage) / 100;
+            
+            summary.totalUSDTInvested += principal;
+            summary.totalTokens += investment.totalTokenOpenInvestment;
+            summary.expectedReward += reward;
+            summary.totalExpectedPayout += (principal + reward);
+            
+            // Check investment status
+            if (currentTime >= investment.endDateInvestment) {
+                summary.hasMaturedInvestments = true;
+            }
+            
+            if (investment.redeemed) {
+                summary.hasRedeemedInvestments = true;
+            }
+            
+            // Calculate claimable amount for this NFT
+            uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
+            
+            if (!investment.redeemed && timeSincePurchase >= 180 days) {
+                if (timeSincePurchase >= 365 days) {
+                    // Full redemption available
+                    summary.canFullyRedeem = true;
+                    if (investment.rewardClaimed) {
+                        summary.claimableAmount += principal + (reward / 2);
+                    } else {
+                        summary.claimableAmount += principal + reward;
+                    }
+                } else if (!investment.rewardClaimed) {
+                    // Early reward available
+                    summary.canClaimEarlyReward = true;
+                    summary.claimableAmount += (reward / 2);
+                }
+            }
+        }
+        
+        return summary;
+    }
+
+    /**
+     * @dev Internal function to get all round IDs where user has participated
+     */
+    function _getUserParticipatedRounds(address user) 
+        internal 
+        view 
+        returns (uint256[] memory participatedRounds) 
+    {
+        // First pass: count rounds where user has investments
+        uint256 count = 0;
+        for (uint256 i = 0; i < _nextRoundId; i++) {
+            if (investmentRounds[i].exists && userNFTsInRound[i][user].length > 0) {
+                count++;
+            }
+        }
+        
+        // Second pass: collect the round IDs
+        participatedRounds = new uint256[](count);
+        uint256 index = 0;
+        for (uint256 i = 0; i < _nextRoundId; i++) {
+            if (investmentRounds[i].exists && userNFTsInRound[i][user].length > 0) {
+                participatedRounds[index] = i;
+                index++;
+            }
+        }
+        
+        return participatedRounds;
+    }
+
+    /**
+     * @dev Get simplified user investment overview (non-paginated) for quick summary
+     * @param user The address of the user to check
+     * @return totalRoundsParticipated Total number of rounds user participated in
+     * @return totalNFTsOwned Total number of NFTs owned by user
+     * @return totalUSDTInvested Total USDT invested across all rounds
+     * @return totalExpectedPayout Total expected payout across all rounds
+     * @return totalClaimableAmount Total amount user can claim right now
+     * @return hasActiveInvestments Whether user has any active investments
+     */
+    function getUserInvestmentOverview(address user)
+        external
+        view
+        returns (
+            uint256 totalRoundsParticipated,
+            uint256 totalNFTsOwned,
+            uint256 totalUSDTInvested,
+            uint256 totalExpectedPayout,
+            uint256 totalClaimableAmount,
+            bool hasActiveInvestments
+        )
+    {
+        uint256[] memory userTokenIds = userInvestments[user];
+        totalNFTsOwned = userTokenIds.length;
+        
+        if (totalNFTsOwned == 0) {
+            return (0, 0, 0, 0, 0, false);
+        }
+        
+        uint256[] memory participatedRounds = _getUserParticipatedRounds(user);
+        totalRoundsParticipated = participatedRounds.length;
+        
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < userTokenIds.length; i++) {
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
+            uint256 reward = (principal * investment.rewardPercentage) / 100;
+            
+            totalUSDTInvested += principal;
+            totalExpectedPayout += (principal + reward);
+            
+            if (!investment.redeemed) {
+                hasActiveInvestments = true;
+                
+                // Calculate claimable amount
+                uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
+                
+                if (timeSincePurchase >= 180 days) {
+                    if (timeSincePurchase >= 365 days) {
+                        // Full redemption
+                        if (investment.rewardClaimed) {
+                            totalClaimableAmount += principal + (reward / 2);
+                        } else {
+                            totalClaimableAmount += principal + reward;
+                        }
+                    } else if (!investment.rewardClaimed) {
+                        // Early reward
+                        totalClaimableAmount += (reward / 2);
+                    }
+                }
+            }
+        }
+        
+        return (
+            totalRoundsParticipated,
+            totalNFTsOwned,
+            totalUSDTInvested,
+            totalExpectedPayout,
+            totalClaimableAmount,
+            hasActiveInvestments
+        );
     }
 
     /**
