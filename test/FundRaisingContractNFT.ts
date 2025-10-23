@@ -333,4 +333,15 @@ describe("FundRaisingContractNFT", async function () {
     ]);
     assert.equal(formatEther(afterClaimW2Balance), "1060");
   });
+  it("Should allowance success", async function () {
+    await usdtContract.write.approve([
+      fundContractNFT.address,
+      500n * 10n ** 18n,
+    ]);
+    const allowance = await usdtContract.read.allowance([
+      wallet1.account.address,
+      fundContractNFT.address,
+    ]);
+    assert.equal(allowance, 500n * 10n ** 18n);
+  });
 });
