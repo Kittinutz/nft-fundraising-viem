@@ -1043,52 +1043,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         );
     }
 
-    /**
-     * @dev Get summary of all rounds
-     * @return roundIds Array of all round IDs
-     * @return roundNames Array of round names
-     * @return roundStatuses Array indicating if rounds are active
-     * @return totalRaised Array of total USDT raised per round
-     * @return isInvestmentOpenArray Array indicating if investment is open for each round
-     */
-    function getAllRoundsSummary() 
-        external 
-        view 
-        returns (
-            uint256[] memory roundIds,
-            string[] memory roundNames,
-            bool[] memory roundStatuses,
-            uint256[] memory totalRaised,
-            bool[] memory isInvestmentOpenArray
-        ) 
-    {
-        uint256 totalRounds = totalRoundsCreated;
-        
-        roundIds = new uint256[](totalRounds);
-        roundNames = new string[](totalRounds);
-        roundStatuses = new bool[](totalRounds);
-        totalRaised = new uint256[](totalRounds);
-        isInvestmentOpenArray = new bool[](totalRounds);
-        
-        for (uint256 i = 0; i < totalRounds; i++) {
-            uint256 roundId = i + 1; // Round IDs start from 1
-            InvestmentRound memory round = investmentRounds[roundId];
-            
-            roundIds[i] = roundId;
-            roundNames[i] = round.roundName;
-            roundStatuses[i] = round.isActive;
-            totalRaised[i] = round.tokensSold * round.tokenPrice;
-            
-            // Check if investment is open
-            uint256 availableTokens = round.totalTokenOpenInvestment - round.tokensSold;
-            isInvestmentOpenArray[i] = round.isActive && 
-                               block.timestamp <= round.closeDateInvestment &&
-                               availableTokens > 0;
-        }
-        
-        return (roundIds, roundNames, roundStatuses, totalRaised, isInvestmentOpenArray);
-    }
-
 
 
     /**

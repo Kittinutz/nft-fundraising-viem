@@ -519,6 +519,228 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(boundaryRounds[1].roundId, 9n, "Second round should be ID 9");
   });
 
+  it("Should test DZNFT wallet pagination with multiple NFTs", async function () {
+    const contract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address
+    );
+    const nft = await viem.getContractAt("DZNFT", nftContract.address);
+    const usdt = await viem.getContractAt("MockUSDT", usdtContract.address);
+
+    // Setup: Mint USDT to wallet2 for investments (like other tests)
+    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
+
+    // Create a test round
+    const currentTimeMs = Date.now();
+    await contract.write.createInvestmentRound([
+      "Test Round for NFT Pagination",
+      500n, // 500 wei per token (like other tests)
+      1500n, // 15% reward
+      1000n, // 1000 tokens available
+      BigInt(currentTimeMs + 86400000 * 30), // 30 days from now
+      BigInt(currentTimeMs + 86400000 * 365), // 1 year from now
+    ]);
+
+    // Setup contract for wallet2
+    const contractW2 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address,
+      { client: { wallet: wallet2 } }
+    );
+    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract.address, {
+      client: { wallet: wallet2 },
+    });
+
+    // Approve USDT for investments (use same amount as other tests)
+    await usdtW2.write.approve([
+      fundContractNFT.address,
+      1000000000n * 10n ** 18n,
+    ]);
+
+    // Make multiple investments to create 7 NFTs
+    const investmentAmounts = [1n, 2n, 1n, 3n]; // Total: 7 NFTs
+    for (const amount of investmentAmounts) {
+      await contractW2.write.investInRound([0n, amount]);
+    }
+
+    // Test: Get all NFTs owned by wallet2 (should be 7)
+    const allTokenIds = await nft.read.getWalletTokenIds([
+      wallet2.account.address,
+    ]);
+    assert.equal(allTokenIds.length, 7, "Should have 7 NFTs total");
+
+    // Test: Get wallet NFT summary
+    const summary = await nft.read.getWalletNFTSummary([
+      wallet2.account.address,
+    ]);
+    const [
+      totalNFTs,
+      activeInvestments,
+      redeemedInvestments,
+      claimedRewards,
+      totalInvestedValue,
+      totalExpectedRewards,
+      claimableAmount,
+    ] = summary;
+
+    assert.equal(totalNFTs, 7n, "Summary should show 7 total NFTs");
+    assert.equal(activeInvestments, 7n, "Should have 7 active investments");
+    assert.equal(redeemedInvestments, 0n, "Should have 0 redeemed investments");
+    assert.equal(claimedRewards, 0n, "Should have 0 claimed rewards");
+    assert.equal(
+      totalInvestedValue,
+      3500n * 10n ** 18n,
+      "Total invested should be 3500 * 10^18 wei (7 tokens * 500 * 10^18 wei)"
+    );
+
+    // Test pagination: First page (offset=0, limit=3)
+    const firstPage = await nft.read.getWalletNFTsPaginated([
+      wallet2.account.address,
+      0n, // offset
+      3n, // limit
+    ]);
+
+    const [
+      firstPageTokenIds,
+      firstPageDetails,
+      firstPageTotal,
+      firstPageTotalPages,
+      firstPageCurrentPage,
+      firstPageHasMore,
+    ] = firstPage;
+
+    // Verify first page results
+    assert.equal(firstPageTokenIds.length, 3, "First page should have 3 NFTs");
+    assert.equal(
+      firstPageDetails.length,
+      3,
+      "First page should have 3 investment details"
+    );
+    assert.equal(firstPageTotal, 7n, "Total should be 7");
+    assert.equal(
+      firstPageTotalPages,
+      3n,
+      "Should have 3 total pages (7/3 = 2.33 -> 3)"
+    );
+    assert.equal(firstPageCurrentPage, 1n, "Should be on page 1");
+    assert.equal(firstPageHasMore, true, "Should have more pages");
+
+    // Verify first page content
+    for (let i = 0; i < 3; i++) {
+      assert.equal(
+        firstPageDetails[i].roundId,
+        0n,
+        `NFT ${i} should be from round 0`
+      );
+      assert.equal(
+        firstPageDetails[i].originalBuyer.toLowerCase(),
+        wallet2.account.address.toLowerCase(),
+        `NFT ${i} should be owned by wallet2`
+      );
+      assert.equal(
+        firstPageDetails[i].tokenPrice,
+        500n * 10n ** 18n,
+        `NFT ${i} should have correct token price`
+      );
+      assert.equal(
+        firstPageDetails[i].rewardPercentage,
+        1500n,
+        `NFT ${i} should have correct reward percentage`
+      );
+      assert.equal(
+        firstPageDetails[i].redeemed,
+        false,
+        `NFT ${i} should not be redeemed`
+      );
+      assert.equal(
+        firstPageDetails[i].rewardClaimed,
+        false,
+        `NFT ${i} should not have reward claimed`
+      );
+    }
+
+    // Test pagination: Second page (offset=3, limit=3)
+    const secondPage = await nft.read.getWalletNFTsPaginated([
+      wallet2.account.address,
+      3n, // offset
+      3n, // limit
+    ]);
+
+    const [
+      secondPageTokenIds,
+      secondPageDetails,
+      secondPageTotal,
+      secondPageTotalPages,
+      secondPageCurrentPage,
+      secondPageHasMore,
+    ] = secondPage;
+
+    // Verify second page results
+    assert.equal(
+      secondPageTokenIds.length,
+      3,
+      "Second page should have 3 NFTs"
+    );
+    assert.equal(secondPageTotal, 7n, "Total should still be 7");
+    assert.equal(secondPageTotalPages, 3n, "Should still have 3 total pages");
+    assert.equal(secondPageCurrentPage, 2n, "Should be on page 2");
+    assert.equal(secondPageHasMore, true, "Should still have more pages");
+
+    // Test pagination: Third page (offset=6, limit=3) - should only have 1 NFT
+    const thirdPage = await nft.read.getWalletNFTsPaginated([
+      wallet2.account.address,
+      6n, // offset
+      3n, // limit
+    ]);
+
+    const [thirdPageTokenIds, , , , thirdPageCurrentPage, thirdPageHasMore] =
+      thirdPage;
+
+    // Verify third page results
+    assert.equal(thirdPageTokenIds.length, 1, "Third page should have 1 NFT");
+    assert.equal(thirdPageCurrentPage, 3n, "Should be on page 3");
+    assert.equal(thirdPageHasMore, false, "Should not have more pages");
+
+    // Test edge case: Empty wallet
+    const emptyWalletResult = await nft.read.getWalletNFTsPaginated([
+      wallet3.account.address, // wallet3 has no NFTs
+      0n,
+      10n,
+    ]);
+
+    const [
+      emptyTokenIds,
+      emptyDetails,
+      emptyTotal,
+      emptyTotalPages,
+      emptyCurrentPage,
+      emptyHasMore,
+    ] = emptyWalletResult;
+    assert.equal(emptyTokenIds.length, 0, "Empty wallet should have 0 NFTs");
+    assert.equal(emptyTotal, 0n, "Empty wallet should have 0 total");
+    assert.equal(emptyTotalPages, 0n, "Empty wallet should have 0 pages");
+    assert.equal(emptyCurrentPage, 0n, "Empty wallet should be on page 0");
+    assert.equal(
+      emptyHasMore,
+      false,
+      "Empty wallet should not have more pages"
+    );
+
+    // Verify all token IDs are unique and belong to wallet2
+    const allUniqueIds = new Set(allTokenIds.map((id) => id.toString()));
+    assert.equal(allUniqueIds.size, 7, "All token IDs should be unique");
+
+    // Verify all NFTs belong to wallet2
+    for (const tokenId of allTokenIds) {
+      const owner = await nft.read.ownerOf([tokenId]);
+      assert.equal(
+        owner.toLowerCase(),
+        wallet2.account.address.toLowerCase(),
+        `Token ${tokenId} should be owned by wallet2`
+      );
+    }
+  });
+
   it("Should allowance success", async function () {
     await usdtContract.write.approve([
       fundContractNFT.address,
