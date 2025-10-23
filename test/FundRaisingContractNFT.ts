@@ -333,6 +333,192 @@ describe("FundRaisingContractNFT", async function () {
     ]);
     assert.equal(formatEther(afterClaimW2Balance), "1060");
   });
+
+  it("Should test getAllRoundsDetailedPaginated with 10 rounds and pagination", async function () {
+    const contract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address
+    );
+
+    // Create 10 test rounds
+    const currentTimeMs = Date.now(); // Current timestamp in milliseconds
+    const rounds = [];
+
+    for (let i = 0; i < 10; i++) {
+      const roundName = `Test Round ${i + 1}`;
+      const tokenPrice = parseEther(`${10 + i}`); // Different prices: 10, 11, 12, ... 19 USDT per token
+      const rewardPercentage = BigInt(1200 + i * 100); // Different rewards: 12%, 13%, 14%, ... 21%
+      const totalTokens = BigInt(1000 + i * 100); // Different token amounts: 1000, 1100, 1200, ... 1900
+      const closeDate = BigInt(currentTimeMs + 86400000 * (30 + i)); // Different close dates (30+ days in future, in milliseconds)
+      const endDate = BigInt(currentTimeMs + 86400000 * (365 + i)); // Different end dates (365+ days in future, in milliseconds)
+
+      // Create the round
+      await contract.write.createInvestmentRound([
+        roundName,
+        tokenPrice,
+        rewardPercentage,
+        totalTokens,
+        closeDate,
+        endDate,
+      ]);
+
+      rounds.push({
+        name: roundName,
+        price: tokenPrice,
+        reward: rewardPercentage,
+        tokens: totalTokens,
+        roundId: BigInt(i),
+      });
+    }
+
+    // Test pagination: First page (offset=0, limit=5)
+    const firstPageResult = await contract.read.getAllRoundsDetailedPaginated([
+      0n, // offset
+      5n, // limit
+      0, // sortField: ID
+      0, // sortDirection: ASC
+    ]);
+
+    const [
+      firstPageRounds,
+      firstPageInvestorCounts,
+      firstPageTotalPages,
+      firstPageCurrentPage,
+      firstPageHasMore,
+    ] = firstPageResult;
+
+    // Verify first page results
+    assert.equal(firstPageRounds.length, 5, "First page should have 5 rounds");
+    assert.equal(
+      firstPageInvestorCounts.length,
+      5,
+      "First page should have 5 investor counts"
+    );
+    assert.equal(firstPageTotalPages, 2n, "Should have 2 total pages");
+    assert.equal(firstPageCurrentPage, 1n, "Should be on page 1");
+    assert.equal(firstPageHasMore, true, "Should have more pages");
+
+    // Verify first page content (rounds 0-4)
+    for (let i = 0; i < 5; i++) {
+      assert.equal(
+        firstPageRounds[i].roundId,
+        BigInt(i),
+        `Round ${i} ID should match`
+      );
+      assert.equal(
+        firstPageRounds[i].roundName,
+        `Test Round ${i + 1}`,
+        `Round ${i} name should match`
+      );
+      assert.equal(
+        firstPageInvestorCounts[i],
+        0n,
+        `Round ${i} should have 0 investors`
+      );
+    }
+
+    // Test pagination: Second page (offset=5, limit=5)
+    const secondPageResult = await contract.read.getAllRoundsDetailedPaginated([
+      5n, // offset
+      5n, // limit
+      0, // sortField: ID
+      0, // sortDirection: ASC
+    ]);
+
+    const [
+      secondPageRounds,
+      secondPageInvestorCounts,
+      secondPageTotalPages,
+      secondPageCurrentPage,
+      secondPageHasMore,
+    ] = secondPageResult;
+
+    // Verify second page results
+    assert.equal(
+      secondPageRounds.length,
+      5,
+      "Second page should have 5 rounds"
+    );
+    assert.equal(
+      secondPageInvestorCounts.length,
+      5,
+      "Second page should have 5 investor counts"
+    );
+    assert.equal(secondPageTotalPages, 2n, "Should have 2 total pages");
+    assert.equal(secondPageCurrentPage, 2n, "Should be on page 2");
+    assert.equal(secondPageHasMore, false, "Should not have more pages");
+
+    // Verify second page content (rounds 5-9)
+    for (let i = 0; i < 5; i++) {
+      const roundIndex = i + 5;
+      assert.equal(
+        secondPageRounds[i].roundId,
+        BigInt(roundIndex),
+        `Round ${roundIndex} ID should match`
+      );
+      assert.equal(
+        secondPageRounds[i].roundName,
+        `Test Round ${roundIndex + 1}`,
+        `Round ${roundIndex} name should match`
+      );
+      assert.equal(
+        secondPageInvestorCounts[i],
+        0n,
+        `Round ${roundIndex} should have 0 investors`
+      );
+    }
+
+    // Test sorting: Get all rounds sorted by reward percentage DESC
+    const sortedResult = await contract.read.getAllRoundsDetailedPaginated([
+      0n, // offset
+      10n, // limit (get all)
+      6, // sortField: REWARD_PERCENTAGE
+      1, // sortDirection: DESC
+    ]);
+
+    const [sortedRounds] = sortedResult;
+
+    // Verify sorting - highest reward percentage first
+    assert.equal(sortedRounds.length, 10, "Should get all 10 rounds");
+    assert.equal(
+      sortedRounds[0].rewardPercentage,
+      2100n,
+      "First round should have highest reward (21%)"
+    );
+    assert.equal(
+      sortedRounds[9].rewardPercentage,
+      1200n,
+      "Last round should have lowest reward (12%)"
+    );
+
+    // Verify descending order
+    for (let i = 0; i < 9; i++) {
+      assert(
+        sortedRounds[i].rewardPercentage >=
+          sortedRounds[i + 1].rewardPercentage,
+        `Round ${i} reward should be >= Round ${i + 1} reward`
+      );
+    }
+
+    // Test boundary case: request near end of data
+    const boundaryResult = await contract.read.getAllRoundsDetailedPaginated([
+      8n, // offset near end
+      5n, // limit
+      0, // sortField: ID
+      0, // sortDirection: ASC
+    ]);
+
+    const [boundaryRounds, , , , boundaryHasMore] = boundaryResult;
+    assert.equal(
+      boundaryRounds.length,
+      2,
+      "Should only get 2 rounds (8 and 9)"
+    );
+    assert.equal(boundaryHasMore, false, "Should not have more pages");
+    assert.equal(boundaryRounds[0].roundId, 8n, "First round should be ID 8");
+    assert.equal(boundaryRounds[1].roundId, 9n, "Second round should be ID 9");
+  });
+
   it("Should allowance success", async function () {
     await usdtContract.write.approve([
       fundContractNFT.address,
