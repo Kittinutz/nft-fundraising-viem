@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
-
 /**
  * @title FundRaisingContractNFT
  * @dev Smart contract for creating and managing investment rounds with NFT representation
@@ -309,8 +308,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         returns (uint256 totalPayout, uint256 processedCount) 
     {
         address sender = msg.sender; // Cache msg.sender to reduce SLOAD operations
-        uint256 currentTime = block.timestamp; // Cache timestamp to reduce external calls
-        
+        uint256 currentTime = block.timestamp; // Cache timestamp to reduce external calls and multiply by 1000 for ms
+
         for (uint256 i = 0; i < tokenIds.length; i++) {
             // First check ownership (cheaper operation)
             if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
@@ -318,16 +317,21 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             if (investment.redeemed) continue;
             
-            uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
+            // Use round close date instead of purchase timestamp for timing
+            uint256 closeDateInvestment = investment.closeDateInvestment;
             
-            // Skip if less than 180 days (no claims allowed yet)
-            if (timeSincePurchase < 180 days) continue;
+            // Add overflow protection
+            if (currentTime <= closeDateInvestment) continue;
+            
+            uint256 timeSinceCloseDateInvestment = currentTime - closeDateInvestment;
+
+            // Skip if less than 180 days after round close (no claims allowed yet)
+            if (timeSinceCloseDateInvestment < (180 days )) continue;
             
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
             uint256 fullRewardAmount = (principal * investment.rewardPercentage) / 100;
-            
-            if (timeSincePurchase >= 365 days) {
-                // Phase 3: Full redemption after 365 days
+            if (timeSinceCloseDateInvestment >= (365 days )) {
+                // Phase 3: Full redemption after 365 days from round close
                 if (investment.rewardClaimed) {
                     // Only principal + remaining half reward if reward was already claimed at 180 days
                     totalPayout += principal + (fullRewardAmount / 2);
@@ -335,8 +339,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
                     // Principal + full reward if never claimed at 180 days
                     totalPayout += principal + fullRewardAmount;
                 }
-            } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
-                // Phase 2: First reward claim between 180-365 days (half reward)
+            } else if (timeSinceCloseDateInvestment >= (180 days) && !investment.rewardClaimed) {
+                // Phase 2: First reward claim between 180-365 days after round close (half reward)
                 totalPayout += (fullRewardAmount / 2);
             }
             // If reward already claimed and not yet 365 days, no payout
@@ -367,21 +371,27 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
             if (investment.redeemed) continue;
             
-            uint256 timeSincePurchase = currentTime - investment.purchaseTimestamp;
+            // Use round close date instead of purchase timestamp for timing
+            uint256 closeDateInvestment = investment.closeDateInvestment;
             
-            // Skip if less than 180 days (no claims allowed)
-            if (timeSincePurchase < 180 days) continue;
+            // Add overflow protection
+            if (currentTime <= closeDateInvestment) continue;
+            
+            uint256 timeSinceCloseDateInvestment = currentTime - closeDateInvestment;
+            
+            // Skip if less than 180 days after round close (no claims allowed)
+            if (timeSinceCloseDateInvestment < 180 days) continue;
             
             // Cache calculations to avoid recalculating in events
             uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
-            uint256 rewardAmount = (principal * investment.rewardPercentage) / 100;
+            uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
             
-            if (timeSincePurchase >= 365 days) {
-                // Phase 3: Full redemption after 365 days - burn NFT
+            if (timeSinceCloseDateInvestment >= 365 days) {
+                // Phase 3: Full redemption after 365 days from round close - burn NFT
                 dzNFT.markAsRedeemed(tokenIds[i]);
                 dzNFT.unlockTransfer(tokenIds[i]);
-            } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
-                // Phase 2: First reward claim between 180-365 days - mark claimed and lock transfers (half reward)
+            } else if (timeSinceCloseDateInvestment >= 180 days && !investment.rewardClaimed) {
+                // Phase 2: First reward claim between 180-365 days after round close - mark claimed and lock transfers (half reward)
                 dzNFT.markRewardClaimed(tokenIds[i]);
                 emit EarlyRewardClaimed(tokenIds[i], sender, rewardAmount / 2);
             }
@@ -563,7 +573,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         onlyOwner 
         roundExists(roundId) 
     {
-        Status oldStatus = investmentRounds[roundId].status;
         investmentRounds[roundId].status = status;
     }
 

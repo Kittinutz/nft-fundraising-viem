@@ -168,19 +168,22 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
+      BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60),
     ]);
     const round = await fundContract.read.investmentRounds([0n]);
     assert.equal(round[0], 0n);
     assert.equal(round[1], "Round 1");
     assert.equal(formatEther(round[2]), "500");
+    // one month from now
     assert.equal(
-      dayjs(Number(round[6])).format("YYYY-MM-DD"),
+      dayjs(Number(round[6]) * 1000).format("YYYY-MM-DD"),
       dayjs().add(30, "day").format("YYYY-MM-DD")
     );
+    // one one year from now
+
     assert.equal(
-      dayjs(Number(round[7])).format("YYYY-MM-DD"),
+      dayjs(Number(round[7]) * 1000).format("YYYY-MM-DD"),
       dayjs().add(365, "day").format("YYYY-MM-DD")
     );
   });
@@ -206,8 +209,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
+      BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60),
     ]);
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
     await usdtW2.write.approve([
@@ -249,8 +252,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
+      BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60),
     ]);
     //** approve from w2 1000 usdt */
 
@@ -285,13 +288,12 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(fundContractBalace), "30");
 
     const block = await publicClient.getBlock();
-
+    const currentRound = await fundContract.read.getInvestmentRound([0n]);
     await networkHelpers.mine();
-    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 6);
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
     await networkHelpers.mine();
 
     await fundContractW2.write.claimRewardRound([0n]);
-
     const afterClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
@@ -316,6 +318,7 @@ describe("FundRaisingContractNFT", async function () {
     ]);
     assert.equal(formatEther(afterClaimW2Balance2), "1060");
   });
+
   it("Owner withdraw fund and investor Redeem as  12 month be success", async function () {
     const fundContract = await viem.getContractAt(
       "FundRaisingContractNFT",
@@ -336,13 +339,14 @@ describe("FundRaisingContractNFT", async function () {
     const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
       client: { wallet: wallet2 },
     });
+    const blockTimeStamp = await publicClient.getBlock();
     await fundContract.write.createInvestmentRound([
       "Round 1",
       500n,
       6n,
       1000n,
-      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      BigInt(Number(blockTimeStamp.timestamp) + 30 * 24 * 60 * 60),
+      BigInt(Number(blockTimeStamp.timestamp) + 365 * 24 * 60 * 60),
     ]);
     //** approve from w2 1000 usdt */
 
@@ -377,7 +381,7 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(fundContractBalace), "1060");
 
     await networkHelpers.mine();
-    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 13);
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 14);
     await networkHelpers.mine();
 
     await fundContractW2.write.claimRewardRound([0n]);
@@ -395,7 +399,7 @@ describe("FundRaisingContractNFT", async function () {
     );
 
     // Create 10 test rounds
-    const currentTimeMs = Date.now(); // Current timestamp in milliseconds
+    const currentTimeMs = Math.floor(Date.now() / 1000); // Current timestamp in milliseconds
     const rounds = [];
 
     for (let i = 0; i < 10; i++) {
@@ -529,7 +533,7 @@ describe("FundRaisingContractNFT", async function () {
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
 
     // Create a test round
-    const currentTimeMs = Date.now();
+    const currentTimeMs = Math.floor(Date.now() / 1000);
     await contract.write.createInvestmentRound([
       "Test Round for NFT Pagination",
       500n, // 500 wei per token (like other tests)
@@ -758,7 +762,7 @@ describe("FundRaisingContractNFT", async function () {
     );
 
     // Create multiple rounds with different creation times
-    const currentTimeMs = Date.now();
+    const currentTimeMs = Math.floor(Date.now() / 1000);
     const roundsData = [];
 
     for (let i = 0; i < 5; i++) {
@@ -939,7 +943,7 @@ describe("FundRaisingContractNFT", async function () {
     );
 
     // Create 3 test rounds
-    const currentTimeMs = Date.now();
+    const currentTimeMs = Math.floor(Date.now() / 1000);
     for (let i = 0; i < 3; i++) {
       await contract.write.createInvestmentRound([
         `Helper Test Round ${i + 1}`,
