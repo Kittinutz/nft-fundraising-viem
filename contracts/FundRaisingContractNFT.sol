@@ -378,7 +378,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             
             if (timeSincePurchase >= 365 days) {
                 // Phase 3: Full redemption after 365 days - burn NFT
-                uint256 payout = investment.rewardClaimed ? principal + (rewardAmount / 2) : principal + rewardAmount;
                 dzNFT.markAsRedeemed(tokenIds[i]);
                 dzNFT.unlockTransfer(tokenIds[i]);
             } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
