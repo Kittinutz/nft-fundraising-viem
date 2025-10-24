@@ -10,6 +10,40 @@ describe("FundRaisingContractNFT", async function () {
   const publicClient = await viem.getPublicClient();
   const [wallet1, wallet2, wallet3] = await viem.getWalletClients();
   let fundContractNFT: any, nftContract: any, usdtContract: any;
+
+  // Helper function to get rounds in reverse chronological order (last created first)
+  async function getRoundsReversed(contract: any, offset = 0, limit?: number) {
+    const [totalRounds] = await contract.read.getRoundsCount();
+    const totalCount = Number(totalRounds);
+
+    if (totalCount === 0) return [];
+
+    // Calculate pagination bounds for reverse order
+    const start = Math.max(totalCount - 1 - offset, 0);
+    const actualLimit = limit ? Math.min(limit, start + 1) : start + 1;
+    const end = Math.max(start - actualLimit + 1, 0);
+
+    const rounds = [];
+    for (let i = start; i >= end; i--) {
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+      rounds.push({
+        roundId: Number(round[0]),
+        roundName: round[1],
+        tokenPrice: round[2],
+        rewardPercentage: Number(round[3]),
+        totalTokens: Number(round[4]),
+        tokensSold: Number(round[5]),
+        closeDate: Number(round[6]),
+        endDate: Number(round[7]),
+        isActive: round[8],
+        exists: round[9],
+        createdAt: Number(round[10]),
+        status: Number(round[11]),
+      });
+    }
+
+    return rounds;
+  }
   beforeEach(async function () {
     const nft = await viem.deployContract("DZNFT", []);
     nftContract = nft;
@@ -74,25 +108,50 @@ describe("FundRaisingContractNFT", async function () {
       endDate,
     ]);
 
-    // Test getAllRoundsDetailedPaginated with sorting
+    // Get total rounds count for pagination
+    const [totalRounds, activeRounds] = await contract.read.getRoundsCount();
+
     const offset = 0n;
     const limit = 10n;
-    const sortField = 2; // CREATED_AT (enum value)
-    const sortDirection = 1; // DESC (enum value)
 
-    const roundList = await contract.read.getAllRoundsDetailedPaginated([
-      offset,
-      limit,
-      sortField,
-      sortDirection,
-    ]);
+    // Manual pagination implementation using available functions
+    const startIndex = Number(offset);
+    const endIndex = Math.min(startIndex + Number(limit), Number(totalRounds));
+    const roundsToFetch = endIndex - startIndex;
+
+    // Fetch round information for pagination range
+    const rounds = [];
+    const investorCounts = [];
+
+    for (let i = startIndex; i < endIndex; i++) {
+      // Get basic round data
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+
+      // Get investors for this round
+      const [investors, nftCounts] = await contract.read.getRoundInvestors([
+        BigInt(i),
+      ]);
+
+      rounds.push(round);
+      investorCounts.push(investors.length);
+    }
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(Number(totalRounds) / Number(limit));
+    const currentPage = Math.floor(Number(offset) / Number(limit)) + 1;
+    const hasMore = endIndex < Number(totalRounds);
 
     // Verify we got results
-    assert.equal(roundList[0].length, 1); // rounds array should have 1 round
-    assert.equal(roundList[1].length, 1); // investorCounts array should have 1 entry
-    assert.equal(roundList[0][0].roundName, roundName); // verify round name
-    assert.equal(roundList[0][0].roundId, 0n); // verify round ID is 0
+    assert.equal(rounds.length, 1); // should have 1 round
+    assert.equal(investorCounts.length, 1); // should have 1 entry
+    assert.equal(rounds[0][1], roundName); // verify round name (index 1 is roundName)
+    assert.equal(rounds[0][0], 0n); // verify round ID is 0 (index 0 is roundId)
+    assert.equal(totalRounds, 1n); // verify total rounds
+    assert.equal(totalPages, 1); // verify pagination calculation
+    assert.equal(currentPage, 1); // verify current page
+    assert.equal(hasMore, false); // verify hasMore flag
   });
+
   it("Mint USDT to Wallet should be success", async function () {
     const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
@@ -114,8 +173,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      Date.now() + 30 * 24 * 60 * 60 * 1000,
-      Date.now() + 365 * 24 * 60 * 60 * 1000,
+      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
     ]);
     const round = await fundContract.read.investmentRounds([0n]);
     assert.equal(round[0], 0n);
@@ -152,8 +211,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      Date.now() + 30 * 24 * 60 * 60 * 1000,
-      Date.now() + 365 * 24 * 60 * 60 * 1000,
+      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
     ]);
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
     await usdtW2.write.approve([
@@ -195,8 +254,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      Date.now() + 30 * 24 * 60 * 60 * 1000,
-      Date.now() + 365 * 24 * 60 * 60 * 1000,
+      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
     ]);
     //** approve from w2 1000 usdt */
 
@@ -287,8 +346,8 @@ describe("FundRaisingContractNFT", async function () {
       500n,
       6n,
       1000n,
-      Date.now() + 30 * 24 * 60 * 60 * 1000,
-      Date.now() + 365 * 24 * 60 * 60 * 1000,
+      BigInt(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      BigInt(Date.now() + 365 * 24 * 60 * 60 * 1000),
     ]);
     //** approve from w2 1000 usdt */
 
@@ -334,7 +393,7 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(afterClaimW2Balance), "1060");
   });
 
-  it("Should test getAllRoundsDetailedPaginated with 10 rounds and pagination", async function () {
+  it("Should test manual pagination with 10 rounds", async function () {
     const contract = await viem.getContractAt(
       "FundRaisingContractNFT",
       fundContractNFT.address
@@ -371,67 +430,52 @@ describe("FundRaisingContractNFT", async function () {
       });
     }
 
-    // Test pagination: First page (offset=0, limit=5)
-    const firstPageResult = await contract.read.getAllRoundsDetailedPaginated([
-      0n, // offset
-      5n, // limit
-      0, // sortField: ID
-      0, // sortDirection: ASC
-    ]);
+    // Test manual pagination using available functions
+    const [totalRounds, activeRounds] = await contract.read.getRoundsCount();
+    assert.equal(totalRounds, 10n, "Should have 10 total rounds");
 
-    const [
-      firstPageRounds,
-      firstPageInvestorCounts,
-      firstPageTotalPages,
-      firstPageCurrentPage,
-      firstPageHasMore,
-    ] = firstPageResult;
+    // Test pagination: First page (offset=0, limit=5)
+    const offset = 0n;
+    const limit = 5n;
+    const startIndex = Number(offset);
+    const endIndex = Math.min(startIndex + Number(limit), Number(totalRounds));
+
+    const firstPageRounds = [];
+    for (let i = startIndex; i < endIndex; i++) {
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+      firstPageRounds.push(round);
+    }
 
     // Verify first page results
     assert.equal(firstPageRounds.length, 5, "First page should have 5 rounds");
-    assert.equal(
-      firstPageInvestorCounts.length,
-      5,
-      "First page should have 5 investor counts"
-    );
-    assert.equal(firstPageTotalPages, 2n, "Should have 2 total pages");
-    assert.equal(firstPageCurrentPage, 1n, "Should be on page 1");
-    assert.equal(firstPageHasMore, true, "Should have more pages");
 
     // Verify first page content (rounds 0-4)
     for (let i = 0; i < 5; i++) {
       assert.equal(
-        firstPageRounds[i].roundId,
+        firstPageRounds[i][0], // roundId is at index 0
         BigInt(i),
         `Round ${i} ID should match`
       );
       assert.equal(
-        firstPageRounds[i].roundName,
+        firstPageRounds[i][1], // roundName is at index 1
         `Test Round ${i + 1}`,
         `Round ${i} name should match`
-      );
-      assert.equal(
-        firstPageInvestorCounts[i],
-        0n,
-        `Round ${i} should have 0 investors`
       );
     }
 
     // Test pagination: Second page (offset=5, limit=5)
-    const secondPageResult = await contract.read.getAllRoundsDetailedPaginated([
-      5n, // offset
-      5n, // limit
-      0, // sortField: ID
-      0, // sortDirection: ASC
-    ]);
+    const offset2 = 5n;
+    const startIndex2 = Number(offset2);
+    const endIndex2 = Math.min(
+      startIndex2 + Number(limit),
+      Number(totalRounds)
+    );
 
-    const [
-      secondPageRounds,
-      secondPageInvestorCounts,
-      secondPageTotalPages,
-      secondPageCurrentPage,
-      secondPageHasMore,
-    ] = secondPageResult;
+    const secondPageRounds = [];
+    for (let i = startIndex2; i < endIndex2; i++) {
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+      secondPageRounds.push(round);
+    }
 
     // Verify second page results
     assert.equal(
@@ -439,84 +483,43 @@ describe("FundRaisingContractNFT", async function () {
       5,
       "Second page should have 5 rounds"
     );
-    assert.equal(
-      secondPageInvestorCounts.length,
-      5,
-      "Second page should have 5 investor counts"
-    );
-    assert.equal(secondPageTotalPages, 2n, "Should have 2 total pages");
-    assert.equal(secondPageCurrentPage, 2n, "Should be on page 2");
-    assert.equal(secondPageHasMore, false, "Should not have more pages");
 
     // Verify second page content (rounds 5-9)
     for (let i = 0; i < 5; i++) {
       const roundIndex = i + 5;
       assert.equal(
-        secondPageRounds[i].roundId,
+        secondPageRounds[i][0], // roundId
         BigInt(roundIndex),
         `Round ${roundIndex} ID should match`
       );
       assert.equal(
-        secondPageRounds[i].roundName,
+        secondPageRounds[i][1], // roundName
         `Test Round ${roundIndex + 1}`,
         `Round ${roundIndex} name should match`
-      );
-      assert.equal(
-        secondPageInvestorCounts[i],
-        0n,
-        `Round ${roundIndex} should have 0 investors`
-      );
-    }
-
-    // Test sorting: Get all rounds sorted by reward percentage DESC
-    const sortedResult = await contract.read.getAllRoundsDetailedPaginated([
-      0n, // offset
-      10n, // limit (get all)
-      6, // sortField: REWARD_PERCENTAGE
-      1, // sortDirection: DESC
-    ]);
-
-    const [sortedRounds] = sortedResult;
-
-    // Verify sorting - highest reward percentage first
-    assert.equal(sortedRounds.length, 10, "Should get all 10 rounds");
-    assert.equal(
-      sortedRounds[0].rewardPercentage,
-      2100n,
-      "First round should have highest reward (21%)"
-    );
-    assert.equal(
-      sortedRounds[9].rewardPercentage,
-      1200n,
-      "Last round should have lowest reward (12%)"
-    );
-
-    // Verify descending order
-    for (let i = 0; i < 9; i++) {
-      assert(
-        sortedRounds[i].rewardPercentage >=
-          sortedRounds[i + 1].rewardPercentage,
-        `Round ${i} reward should be >= Round ${i + 1} reward`
       );
     }
 
     // Test boundary case: request near end of data
-    const boundaryResult = await contract.read.getAllRoundsDetailedPaginated([
-      8n, // offset near end
-      5n, // limit
-      0, // sortField: ID
-      0, // sortDirection: ASC
-    ]);
+    const offset3 = 8n;
+    const startIndex3 = Number(offset3);
+    const endIndex3 = Math.min(
+      startIndex3 + Number(limit),
+      Number(totalRounds)
+    );
 
-    const [boundaryRounds, , , , boundaryHasMore] = boundaryResult;
+    const boundaryRounds = [];
+    for (let i = startIndex3; i < endIndex3; i++) {
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+      boundaryRounds.push(round);
+    }
+
     assert.equal(
       boundaryRounds.length,
       2,
       "Should only get 2 rounds (8 and 9)"
     );
-    assert.equal(boundaryHasMore, false, "Should not have more pages");
-    assert.equal(boundaryRounds[0].roundId, 8n, "First round should be ID 8");
-    assert.equal(boundaryRounds[1].roundId, 9n, "Second round should be ID 9");
+    assert.equal(boundaryRounds[0][0], 8n, "First round should be ID 8");
+    assert.equal(boundaryRounds[1][0], 9n, "Second round should be ID 9");
   });
 
   it("Should test DZNFT wallet pagination with multiple NFTs", async function () {
@@ -751,5 +754,258 @@ describe("FundRaisingContractNFT", async function () {
       fundContractNFT.address,
     ]);
     assert.equal(allowance, 500n * 10n ** 18n);
+  });
+
+  it("Should display round list with last created round first", async function () {
+    const contract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address
+    );
+
+    // Create multiple rounds with different creation times
+    const currentTimeMs = Date.now();
+    const roundsData = [];
+
+    for (let i = 0; i < 5; i++) {
+      const roundName = `Round ${i + 1}`;
+      const tokenPrice = parseEther(`${100 + i * 50}`); // Different prices: 100, 150, 200, 250, 300 USDT
+      const rewardPercentage = BigInt(1000 + i * 200); // Different rewards: 10%, 12%, 14%, 16%, 18%
+      const totalTokens = BigInt(500 + i * 100); // Different token amounts: 500, 600, 700, 800, 900
+      const closeDate = BigInt(currentTimeMs + 86400000 * (30 + i * 10)); // Different close dates
+      const endDate = BigInt(currentTimeMs + 86400000 * (365 + i * 30)); // Different end dates
+
+      // Create the round
+      await contract.write.createInvestmentRound([
+        roundName,
+        tokenPrice,
+        rewardPercentage,
+        totalTokens,
+        closeDate,
+        endDate,
+      ]);
+
+      roundsData.push({
+        id: i,
+        name: roundName,
+        price: tokenPrice,
+        reward: rewardPercentage,
+        tokens: totalTokens,
+        createdOrder: i, // Order of creation (0 = first, 4 = last)
+      });
+    }
+
+    // Get total rounds count
+    const [totalRounds, activeRounds] = await contract.read.getRoundsCount();
+    assert.equal(totalRounds, 5n, "Should have 5 total rounds");
+
+    // Fetch all rounds and display them in reverse order (last created first)
+    const allRounds = [];
+    for (let i = 0; i < Number(totalRounds); i++) {
+      const round = await contract.read.investmentRounds([BigInt(i)]);
+
+      allRounds.push({
+        roundId: round[0], // roundId
+        roundName: round[1], // roundName
+        tokenPrice: round[2], // tokenPrice
+        rewardPercentage: round[3], // rewardPercentage
+        totalTokens: round[4], // totalTokenOpenInvestment (index 4)
+        creationIndex: i, // Original creation order
+      });
+    }
+
+    // Sort rounds by creation order in descending order (last created first)
+    const sortedRounds = allRounds.sort(
+      (a, b) => Number(b.roundId) - Number(a.roundId)
+    );
+
+    // Verify the sorting - last created round should be first
+    assert.equal(sortedRounds.length, 5, "Should have 5 rounds");
+    assert.equal(
+      sortedRounds[0].roundName,
+      "Round 5",
+      "First in list should be Round 5 (last created)"
+    );
+    assert.equal(
+      sortedRounds[1].roundName,
+      "Round 4",
+      "Second in list should be Round 4"
+    );
+    assert.equal(
+      sortedRounds[2].roundName,
+      "Round 3",
+      "Third in list should be Round 3"
+    );
+    assert.equal(
+      sortedRounds[3].roundName,
+      "Round 2",
+      "Fourth in list should be Round 2"
+    );
+    assert.equal(
+      sortedRounds[4].roundName,
+      "Round 1",
+      "Last in list should be Round 1 (first created)"
+    );
+
+    // Verify round IDs are in descending order
+    for (let i = 0; i < sortedRounds.length - 1; i++) {
+      assert(
+        sortedRounds[i].roundId > sortedRounds[i + 1].roundId,
+        `Round ${i} ID should be greater than Round ${i + 1} ID`
+      );
+    }
+
+    // Test pagination with reverse order (last created first)
+    const pageSize = 3;
+    const firstPageOffset = 0;
+
+    // Get first page (3 most recent rounds)
+    const firstPageStart = Number(totalRounds) - 1 - firstPageOffset; // Start from last created
+    const firstPageEnd = Math.max(firstPageStart - pageSize + 1, 0); // Go backwards
+
+    const firstPageRounds = [];
+    for (let i = firstPageStart; i >= firstPageEnd; i--) {
+      if (i >= 0) {
+        const round = await contract.read.investmentRounds([BigInt(i)]);
+        firstPageRounds.push({
+          roundId: round[0],
+          roundName: round[1],
+          tokenPrice: round[2],
+          rewardPercentage: round[3],
+        });
+      }
+    }
+
+    // Verify first page contains the 3 most recent rounds
+    assert.equal(firstPageRounds.length, 3, "First page should have 3 rounds");
+    assert.equal(
+      firstPageRounds[0].roundName,
+      "Round 5",
+      "First page first item should be Round 5"
+    );
+    assert.equal(
+      firstPageRounds[1].roundName,
+      "Round 4",
+      "First page second item should be Round 4"
+    );
+    assert.equal(
+      firstPageRounds[2].roundName,
+      "Round 3",
+      "First page third item should be Round 3"
+    );
+
+    // Test second page (remaining 2 rounds)
+    const secondPageOffset = 3;
+    const secondPageStart = Number(totalRounds) - 1 - secondPageOffset;
+    const secondPageEnd = Math.max(secondPageStart - pageSize + 1, 0);
+
+    const secondPageRounds = [];
+    for (let i = secondPageStart; i >= secondPageEnd; i--) {
+      if (i >= 0) {
+        const round = await contract.read.investmentRounds([BigInt(i)]);
+        secondPageRounds.push({
+          roundId: round[0],
+          roundName: round[1],
+        });
+      }
+    }
+
+    // Verify second page contains the 2 oldest rounds
+    assert.equal(
+      secondPageRounds.length,
+      2,
+      "Second page should have 2 rounds"
+    );
+    assert.equal(
+      secondPageRounds[0].roundName,
+      "Round 2",
+      "Second page first item should be Round 2"
+    );
+    assert.equal(
+      secondPageRounds[1].roundName,
+      "Round 1",
+      "Second page second item should be Round 1"
+    );
+
+    // Display summary of rounds in reverse chronological order
+    console.log("\n=== Rounds List (Last Created First) ===");
+    sortedRounds.forEach((round, index) => {
+      console.log(`${index + 1}. ${round.roundName} (ID: ${round.roundId})`);
+      console.log(`   Token Price: ${formatEther(round.tokenPrice)} USDT`);
+      console.log(`   Reward: ${Number(round.rewardPercentage) / 100}%`);
+      console.log(`   Total Tokens: ${round.totalTokens}`);
+      console.log("");
+    });
+  });
+
+  it("Should use helper function to get rounds in reverse order with pagination", async function () {
+    const contract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT.address
+    );
+
+    // Create 3 test rounds
+    const currentTimeMs = Date.now();
+    for (let i = 0; i < 3; i++) {
+      await contract.write.createInvestmentRound([
+        `Helper Test Round ${i + 1}`,
+        parseEther(`${50 + i * 25}`), // 50, 75, 100 USDT
+        BigInt(800 + i * 200), // 8%, 10%, 12%
+        BigInt(100 + i * 50), // 100, 150, 200 tokens
+        BigInt(currentTimeMs + 86400000 * 30),
+        BigInt(currentTimeMs + 86400000 * 365),
+      ]);
+    }
+
+    // Test helper function - get all rounds in reverse order
+    const allRounds = await getRoundsReversed(contract);
+    assert.equal(allRounds.length, 3, "Should get all 3 rounds");
+    assert.equal(
+      allRounds[0].roundName,
+      "Helper Test Round 3",
+      "First should be last created"
+    );
+    assert.equal(
+      allRounds[1].roundName,
+      "Helper Test Round 2",
+      "Second should be middle"
+    );
+    assert.equal(
+      allRounds[2].roundName,
+      "Helper Test Round 1",
+      "Third should be first created"
+    );
+
+    // Test pagination with helper function - first page (limit 2)
+    const firstPage = await getRoundsReversed(contract, 0, 2);
+    assert.equal(firstPage.length, 2, "First page should have 2 rounds");
+    assert.equal(
+      firstPage[0].roundName,
+      "Helper Test Round 3",
+      "First page first item"
+    );
+    assert.equal(
+      firstPage[1].roundName,
+      "Helper Test Round 2",
+      "First page second item"
+    );
+
+    // Test pagination with helper function - second page (offset 2, limit 2)
+    const secondPage = await getRoundsReversed(contract, 2, 2);
+    assert.equal(secondPage.length, 1, "Second page should have 1 round");
+    assert.equal(
+      secondPage[0].roundName,
+      "Helper Test Round 1",
+      "Second page first item"
+    );
+
+    console.log("\n=== Helper Function Test - Rounds in Reverse Order ===");
+    allRounds.forEach((round, index) => {
+      console.log(`${index + 1}. ${round.roundName} (ID: ${round.roundId})`);
+      console.log(
+        `   Tokens: ${round.totalTokens}, Reward: ${
+          round.rewardPercentage / 100
+        }%`
+      );
+    });
   });
 });

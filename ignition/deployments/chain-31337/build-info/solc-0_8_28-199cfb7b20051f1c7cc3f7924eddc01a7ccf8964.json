@@ -1,6 +1,6 @@
 {
   "_format": "hh3-sol-build-info-1",
-  "id": "solc-0_8_28-a64df43f466a059a2f23116e447a70e7ae78a9d2",
+  "id": "solc-0_8_28-199cfb7b20051f1c7cc3f7924eddc01a7ccf8964",
   "solcVersion": "0.8.28",
   "solcLongVersion": "0.8.28+commit.7893614a",
   "userSourceNameMap": {
@@ -12,7 +12,7 @@
       "evmVersion": "cancun",
       "optimizer": {
         "enabled": true,
-        "runs": 200
+        "runs": 1
       },
       "outputSelection": {
         "*": {
