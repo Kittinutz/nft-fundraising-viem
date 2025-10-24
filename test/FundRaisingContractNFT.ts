@@ -128,12 +128,8 @@ describe("FundRaisingContractNFT", async function () {
       const round = await contract.read.investmentRounds([BigInt(i)]);
 
       // Get investors for this round
-      const [investors, nftCounts] = await contract.read.getRoundInvestors([
-        BigInt(i),
-      ]);
 
       rounds.push(round);
-      investorCounts.push(investors.length);
     }
 
     // Calculate pagination metadata
@@ -143,7 +139,6 @@ describe("FundRaisingContractNFT", async function () {
 
     // Verify we got results
     assert.equal(rounds.length, 1); // should have 1 round
-    assert.equal(investorCounts.length, 1); // should have 1 entry
     assert.equal(rounds[0][1], roundName); // verify round name (index 1 is roundName)
     assert.equal(rounds[0][0], 0n); // verify round ID is 0 (index 0 is roundId)
     assert.equal(totalRounds, 1n); // verify total rounds

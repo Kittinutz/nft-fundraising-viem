@@ -59,48 +59,16 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public _nextRoundId;
     uint256 public totalRoundsCreated;
     uint256 public totalUSDTRaised;
+   
     
-    event RoundCreated(
-        uint256 indexed roundId,
-        string roundName,
-        uint256 tokenPrice,
-        uint256 rewardPercentage,
-        uint256 totalTokenOpenInvestment,
-        uint256 closeDateInvestment,
-        uint256 endDateInvestment
-    );
-    
-    event InvestmentMade(
-        uint256 indexed roundId,
-        uint256 indexed tokenId,
-        address indexed investor,
-        uint256 amountUSDT,
-        uint256 tokensReceived
-    );
     
     event RoundStatusChanged(uint256 indexed roundId, bool isActive);
-    event RedemptionMade(uint256 indexed tokenId, address indexed investor, uint256 payout);
     event EarlyRewardClaimed(uint256 indexed tokenId, address indexed investor, uint256 rewardAmount);
     event USDTTokenUpdated(address indexed oldToken, address indexed newToken);
     event RoundFunded(uint256 indexed roundId, uint256 amount);
-    event RoundEmergencyWithdraw(uint256 indexed roundId, uint256 amount);
-    event RoundStatusUpdated(uint256 indexed roundId, Status oldStatus, Status newStatus);
     
     // New Reward Distribution Events
     event RewardAdded(uint256 indexed roundId, uint256 amount, uint256 totalPoolAmount);
-    event RewardsClaimed(
-        address indexed investor, 
-        uint256 totalAmount, 
-        uint256[] roundIds, 
-        uint256[] amounts,
-        uint256[] tokenIds
-    );
-    event RewardDistributionCalculated(
-        address indexed investor,
-        uint256 totalClaimable,
-        uint256 nftCount,
-        uint256[] roundIds
-    );
     
     modifier roundExists(uint256 roundId) {
         require(investmentRounds[roundId].exists, "Round does not exist");
@@ -164,15 +132,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         totalRoundsCreated++;
         
-        emit RoundCreated(
-            roundId,
-            roundName,
-            tokenPrice* 10 ** USDT_DECIMALS,
-            rewardPercentage,
-            totalTokenOpenInvestment,
-            closeDateInvestment,
-            endDateInvestment
-        );
         
         return roundId;
     }
@@ -286,9 +245,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             roundTokens.push(tokenIds[i]);
             userTokens.push(tokenIds[i]);
             userRoundTokens.push(tokenIds[i]);
-            
-            // Emit event with cached values
-            emit InvestmentMade(roundId, tokenIds[i], investor, tokenPrice, 1);
         }
         
         // Update round data (once, outside the loop)
@@ -425,7 +381,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
                 uint256 payout = investment.rewardClaimed ? principal + (rewardAmount / 2) : principal + rewardAmount;
                 dzNFT.markAsRedeemed(tokenIds[i]);
                 dzNFT.unlockTransfer(tokenIds[i]);
-                emit RedemptionMade(tokenIds[i], sender, payout);
             } else if (timeSincePurchase >= 180 days && !investment.rewardClaimed) {
                 // Phase 2: First reward claim between 180-365 days - mark claimed and lock transfers (half reward)
                 dzNFT.markRewardClaimed(tokenIds[i]);
@@ -482,57 +437,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return userNFTsInRound[roundId][user];
     }
     
-    
-    /**
-     * @dev Get all unique investors in a specific round
-     */
-    function getRoundInvestors(uint256 roundId) 
-        external 
-        view 
-        roundExists(roundId) 
-        returns (address[] memory investors, uint256[] memory nftCounts) 
-    {
-        uint256[] memory tokenIds = roundTokenIds[roundId];
-        address[] memory tempInvestors = new address[](tokenIds.length);
-        uint256[] memory tempCounts = new uint256[](tokenIds.length);
-        uint256 uniqueCount = 0;
-        
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
-            address investor = investment.originalBuyer;
-            
-            // Check if investor already exists in our temp arrays
-            bool exists = false;
-            uint256 existingIndex = 0;
-            for (uint256 j = 0; j < uniqueCount; j++) {
-                if (tempInvestors[j] == investor) {
-                    exists = true;
-                    existingIndex = j;
-                    break;
-                }
-            }
-            
-            if (exists) {
-                tempCounts[existingIndex]++;
-            } else {
-                tempInvestors[uniqueCount] = investor;
-                tempCounts[uniqueCount] = 1;
-                uniqueCount++;
-            }
-        }
-        
-        // Create properly sized arrays
-        investors = new address[](uniqueCount);
-        nftCounts = new uint256[](uniqueCount);
-        
-        for (uint256 i = 0; i < uniqueCount; i++) {
-            investors[i] = tempInvestors[i];
-            nftCounts[i] = tempCounts[i];
-        }
-        
-        return (investors, nftCounts);
-    }
-    
+   
     /**
     * @dev widthdraw fund from a specific round (only owner)
     */
@@ -589,7 +494,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "USDT transfer failed"
         );
         
-        emit RoundEmergencyWithdraw(roundId, amount);
     }
     
     /**
@@ -662,7 +566,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     {
         Status oldStatus = investmentRounds[roundId].status;
         investmentRounds[roundId].status = status;
-        emit RoundStatusUpdated(roundId, oldStatus, status);
     }
 
     /**
@@ -677,35 +580,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         returns (Status status) 
     {
         return investmentRounds[roundId].status;
-    }
-
-    /**
-     * @dev Internal function to get all round IDs where user has participated
-     */
-    function _getUserParticipatedRounds(address user) 
-        internal 
-        view 
-        returns (uint256[] memory participatedRounds) 
-    {
-        // First pass: count rounds where user has investments
-        uint256 count = 0;
-        for (uint256 i = 0; i < _nextRoundId; i++) {
-            if (investmentRounds[i].exists && userNFTsInRound[i][user].length > 0) {
-                count++;
-            }
-        }
-        
-        // Second pass: collect the round IDs
-        participatedRounds = new uint256[](count);
-        uint256 index = 0;
-        for (uint256 i = 0; i < _nextRoundId; i++) {
-            if (investmentRounds[i].exists && userNFTsInRound[i][user].length > 0) {
-                participatedRounds[index] = i;
-                index++;
-            }
-        }
-        
-        return participatedRounds;
     }
 
     /**
