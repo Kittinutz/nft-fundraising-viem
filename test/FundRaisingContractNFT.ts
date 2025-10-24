@@ -223,7 +223,7 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(beforeClaimW2Balance), "0");
     await usdt.write.mint([wallet1.account.address, 30n * 10n ** 18n]);
     await usdt.write.approve([fundContract.address, 30n * 10n ** 18n]);
-    await fundContract.write.addReward([0n, 30n]);
+    await fundContract.write.addRewardToRound([0n, 30n]);
     const fundContractBalace = await usdt.read.balanceOf([
       fundContract.address,
     ]);
@@ -245,7 +245,7 @@ describe("FundRaisingContractNFT", async function () {
 
     await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
     await usdt.write.approve([fundContract.address, 1030n * 10n ** 18n]);
-    await fundContract.write.addReward([0n, 1030n]);
+    await fundContract.write.addRewardToRound([0n, 1030n]);
     const fundContractBalace2 = await usdt.read.balanceOf([
       fundContract.address,
     ]);
@@ -315,7 +315,7 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(beforeClaimW2Balance), "0");
     await usdt.write.mint([wallet1.account.address, 1060n * 10n ** 18n]);
     await usdt.write.approve([fundContract.address, 1060n * 10n ** 18n]);
-    await fundContract.write.addReward([0n, 1060n]);
+    await fundContract.write.addRewardToRound([0n, 1060n]);
     const fundContractBalace = await usdt.read.balanceOf([
       fundContract.address,
     ]);

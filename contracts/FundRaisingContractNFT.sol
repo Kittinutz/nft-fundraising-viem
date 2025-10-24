@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
-import "hardhat/console.sol";
 
 /**
  * @title FundRaisingContractNFT
@@ -52,6 +51,14 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256[]) public userInvestments; // user => tokenIds array
     mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound; // roundId => user => tokenIds array
     mapping(uint256 => uint256) public roundUSDTLedger; // roundId => USDT balance for each round
+    
+    // New Reward Distribution Mappings
+    mapping(uint256 => uint256) public roundRewardPool; // roundId => total reward pool amount
+    mapping(uint256 => uint256) public roundRewardPerNFT; // roundId => reward amount per NFT in this round
+    mapping(address => mapping(uint256 => uint256)) public userClaimedRewards; // user => roundId => claimed amount
+    mapping(address => uint256) public totalUserRewardsClaimed; // user => total rewards claimed across all rounds
+    mapping(uint256 => uint256[]) public rewardClaimHistory; // roundId => array of claim amounts (for audit trail)
+    mapping(address => uint256[]) public userRewardClaimHistory; // user => array of claim transaction amounts
     uint256 private _nextRoundId;
     uint256 public currentRoundId;
     uint256 public totalRoundsCreated;
@@ -82,6 +89,22 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     event RoundFunded(uint256 indexed roundId, uint256 amount);
     event RoundEmergencyWithdraw(uint256 indexed roundId, uint256 amount);
     event RoundStatusUpdated(uint256 indexed roundId, Status oldStatus, Status newStatus);
+    
+    // New Reward Distribution Events
+    event RewardAdded(uint256 indexed roundId, uint256 amount, uint256 totalPoolAmount);
+    event RewardsClaimed(
+        address indexed investor, 
+        uint256 totalAmount, 
+        uint256[] roundIds, 
+        uint256[] amounts,
+        uint256[] tokenIds
+    );
+    event RewardDistributionCalculated(
+        address indexed investor,
+        uint256 totalClaimable,
+        uint256 nftCount,
+        uint256[] roundIds
+    );
     
     modifier roundExists(uint256 roundId) {
         require(investmentRounds[roundId].exists, "Round does not exist");
@@ -281,81 +304,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return tokenIds[0]; // Return first token ID for backward compatibility
     }
     
-    /**
-     * @dev Unified claim function - handles both early reward (6 months) and full redemption (1 year)
-     */
-    function claimRewards(uint256 tokenId) 
-        external 
-        nonReentrant 
-        whenNotPaused 
-    {
-        require(dzNFT.ownerOf(tokenId) == msg.sender, "Not the owner of this NFT");
-        
-        DZNFT.InvestmentData memory nftToken = dzNFT.getInvestmentData(tokenId);
-        require(!nftToken.redeemed, "Investment already redeemed");
-        
-        uint256 timeSincePurchase = block.timestamp - nftToken.purchaseTimestamp;
-        
-        // Check if at least 6 months have passed
-        require(timeSincePurchase >= 180 days, "Must wait at least 6 months");
-        
-        // Calculate amounts with proper decimal handling
-        // nftToken.tokenPrice is in 18 decimals format
-        // nftToken.totalTokenOpenInvestment is number of tokens (no decimals)
-        uint256 principal = (nftToken.totalTokenOpenInvestment * nftToken.tokenPrice);
-        uint256 rewardAmount = (principal * nftToken.rewardPercentage) / 100;
-        
-        uint256 totalPayout;
-        bool isFullRedemption = timeSincePurchase >= 365 days; // 1 year
-        
-        if (isFullRedemption) {
-            // Phase 3: Full redemption (after 1 year)
-            if (nftToken.rewardClaimed) {
-                // Only principal + remaining half dividend if dividend was already claimed
-                totalPayout = principal + (rewardAmount / 2);
-            } else {
-                // Principal + full dividend if dividend was not claimed early
-                totalPayout = principal + rewardAmount;
-            }
-        } else {
-            // Phase 2: Early dividend only (6 months to 1 year) - half dividend
-            require(!nftToken.rewardClaimed, "Reward already claimed");
-            totalPayout = rewardAmount / 2;
-        }
-        
-        require(totalPayout > 0, "No amount to claim");
-        require(
-            usdtToken.balanceOf(address(this)) >= totalPayout,
-            "Insufficient contract USDT balance"
-        );
-        
-        // Check round has sufficient funds
-        require(
-            roundUSDTLedger[nftToken.roundId] >= totalPayout,
-            "Insufficient round USDT balance"
-        );
-        
-        if (isFullRedemption) {
-            // Mark as fully redeemed and unlock transfer
-            dzNFT.markAsRedeemed(tokenId);
-            dzNFT.unlockTransfer(tokenId);
-            emit RedemptionMade(tokenId, msg.sender, totalPayout);
-        } else {
-            // Mark reward as claimed and lock transfer
-            dzNFT.markRewardClaimed(tokenId);
-            emit EarlyRewardClaimed(tokenId, msg.sender, totalPayout);
-        }
-        
-        // Update round ledger
-        roundUSDTLedger[nftToken.roundId] -= totalPayout;
-        
-        // Transfer USDT to investor
-        require(
-            usdtToken.transfer(msg.sender, totalPayout),
-            "USDT transfer failed"
-        );
-    }
-
+   
     /**
      * @dev Claim rewards for all user's NFTs in a specific round
      */
@@ -378,7 +327,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             "Insufficient contract USDT balance"
         );
         require(
-            roundUSDTLedger[roundId] >= totalPayout,
+            roundRewardPool[roundId] >= totalPayout,
             "Insufficient round USDT balance"
         );
         
@@ -386,6 +335,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         _processRoundClaims(userTokenIds);
         
         // Update round ledger and transfer
+        roundRewardPool[roundId] -= totalPayout;
         roundUSDTLedger[roundId] -= totalPayout;
         require(
             usdtToken.transfer(msg.sender, totalPayout),
@@ -537,17 +487,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return userNFTsInRound[roundId][user];
     }
     
-    /**
-     * @dev Get number of NFTs a user has in a specific round
-     */
-    function getUserNFTCountInRound(uint256 roundId, address user) 
-        external 
-        view 
-        roundExists(roundId) 
-        returns (uint256) 
-    {
-        return userNFTsInRound[roundId][user].length;
-    }
     
     /**
      * @dev Get all unique investors in a specific round
@@ -597,41 +536,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         }
         
         return (investors, nftCounts);
-    }
-    
-    /**
-     * @dev Check if a user has invested in a specific round
-     */
-    function hasUserInvestedInRound(uint256 roundId, address user) 
-        external 
-        view 
-        roundExists(roundId) 
-        returns (bool) 
-    {
-        return userNFTsInRound[roundId][user].length > 0;
-    }
-    
-    /**
-     * @dev Get total USDT amount invested by a user in a specific round
-     */
-    function getUserTotalInvestmentInRound(uint256 roundId, address user) 
-        external 
-        view 
-        roundExists(roundId) 
-        returns (uint256 totalUSDT, uint256 totalTokens) 
-    {
-        uint256[] memory userTokenIds = userNFTsInRound[roundId][user];
-        totalUSDT = 0;
-        totalTokens = 0;
-        
-        for (uint256 i = 0; i < userTokenIds.length; i++) {
-            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokenIds[i]);
-            uint256 investmentUSDT = (investment.totalTokenOpenInvestment * investment.tokenPrice) / (10 ** USDT_DECIMALS);
-            totalUSDT += investmentUSDT;
-            totalTokens += investment.totalTokenOpenInvestment;
-        }
-        
-        return (totalUSDT, totalTokens);
     }
     
     /**
@@ -728,24 +632,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         );
     }
 
-    /**
-     * @dev Fund specific round with USDT (only owner)
-     */
-    function addReward(uint256 roundId, uint256 amount) 
-        external 
-        onlyOwner 
-        roundExists(roundId) 
-    {
-        require(amount > 0, "Amount must be greater than 0");
-        require(
-            usdtToken.transferFrom(msg.sender, address(this), amount * 10 ** USDT_DECIMALS),
-            "USDT transfer failed"
-        );
 
-        roundUSDTLedger[roundId] += amount * 10 ** USDT_DECIMALS;
-        investmentRounds[roundId].status = Status.DIVIDEND_PAID;
-        emit RoundFunded(roundId, amount * 10 ** USDT_DECIMALS);
-    }
 
     /**
     * @dev widthdraw fund from a specific round (only owner)
@@ -886,27 +773,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return (roundIds, balances);
     }
 
-    /**
-     * @dev Check if token can claim early dividend
-     */
-    function canTokenClaimEarlyReward(uint256 tokenId) 
-        external 
-        view 
-        returns (bool) 
-    {
-        return dzNFT.canClaimEarlyReward(tokenId);
-    }
 
-    /**
-     * @dev Check if token can be fully redeemed
-     */
-    function canTokenFullyRedeem(uint256 tokenId) 
-        external 
-        view 
-        returns (bool) 
-    {
-        return dzNFT.canFullyRedeem(tokenId);
-    }
 
     /**
      * @dev Get calculation of reward amount and principal amount for a specific round
@@ -1617,6 +1484,261 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             totalPrincipalRedeemed,
             earlyRewardsClaimed,
             fullRedemptions
+        );
+    }
+
+    /**
+     * @dev Calculate total claimable rewards for a wallet address
+     * @param wallet The address to calculate rewards for
+     * @return totalClaimable Total amount of rewards that can be claimed
+     * @return roundIds Array of round IDs with claimable rewards
+     * @return amounts Array of claimable amounts per round
+     * @return nftCounts Array of NFT counts per round
+     * @return tokenIds Array of all NFT token IDs used in calculation
+     */
+    function calculateClaimableRewards(address wallet)
+        external
+        returns (
+            uint256 totalClaimable,
+            uint256[] memory roundIds,
+            uint256[] memory amounts,
+            uint256[] memory nftCounts,
+            uint256[] memory tokenIds
+        )
+    {
+        require(wallet != address(0), "Invalid wallet address");
+        
+        uint256[] memory participatedRounds = _getUserParticipatedRounds(wallet);
+        require(participatedRounds.length > 0, "No investments found for this wallet");
+        
+        // Temporary arrays to collect data
+        uint256[] memory tempRoundIds = new uint256[](participatedRounds.length);
+        uint256[] memory tempAmounts = new uint256[](participatedRounds.length);
+        uint256[] memory tempNftCounts = new uint256[](participatedRounds.length);
+        
+        // Count total NFTs for tokenIds array
+        uint256 totalNFTs = 0;
+        for (uint256 i = 0; i < participatedRounds.length; i++) {
+            uint256 roundId = participatedRounds[i];
+            uint256[] memory userTokens = userNFTsInRound[roundId][wallet];
+            
+            // Count valid NFTs (still owned and not redeemed)
+            for (uint256 j = 0; j < userTokens.length; j++) {
+                if (dzNFT.ownerOf(userTokens[j]) == wallet) {
+                    DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(userTokens[j]);
+                    if (!investment.redeemed) {
+                        totalNFTs++;
+                    }
+                }
+            }
+        }
+        
+        tokenIds = new uint256[](totalNFTs);
+        uint256 tokenIndex = 0;
+        uint256 validRoundsCount = 0;
+        
+        // Calculate rewards for each round
+        for (uint256 i = 0; i < participatedRounds.length; i++) {
+            uint256 roundId = participatedRounds[i];
+            uint256[] memory userTokens = userNFTsInRound[roundId][wallet];
+            
+            uint256 roundClaimable = 0;
+            uint256 validNFTsInRound = 0;
+            
+            // Check each NFT in this round
+            for (uint256 j = 0; j < userTokens.length; j++) {
+                uint256 tokenId = userTokens[j];
+                
+                // Verify ownership and redemption status
+                if (dzNFT.ownerOf(tokenId) == wallet) {
+                    DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenId);
+                    
+                    if (!investment.redeemed) {
+                        validNFTsInRound++;
+                        tokenIds[tokenIndex] = tokenId;
+                        tokenIndex++;
+                        
+                        // Calculate reward based on round reward per NFT
+                        if (roundRewardPerNFT[roundId] > 0) {
+                            // Check if user has already claimed for this round
+                            if (userClaimedRewards[wallet][roundId] == 0) {
+                                roundClaimable += roundRewardPerNFT[roundId];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Only include rounds with claimable rewards
+            if (roundClaimable > 0 && validNFTsInRound > 0) {
+                tempRoundIds[validRoundsCount] = roundId;
+                tempAmounts[validRoundsCount] = roundClaimable * validNFTsInRound;
+                tempNftCounts[validRoundsCount] = validNFTsInRound;
+                totalClaimable += tempAmounts[validRoundsCount];
+                validRoundsCount++;
+            }
+        }
+        
+        // Create properly sized return arrays
+        roundIds = new uint256[](validRoundsCount);
+        amounts = new uint256[](validRoundsCount);
+        nftCounts = new uint256[](validRoundsCount);
+        
+        for (uint256 i = 0; i < validRoundsCount; i++) {
+            roundIds[i] = tempRoundIds[i];
+            amounts[i] = tempAmounts[i];
+            nftCounts[i] = tempNftCounts[i];
+        }
+        
+        // Emit event for tracking
+        emit RewardDistributionCalculated(wallet, totalClaimable, totalNFTs, roundIds);
+        
+        return (totalClaimable, roundIds, amounts, nftCounts, tokenIds);
+    }
+
+    /**
+     * @dev Add rewards to a specific round (owner only)
+     * @param roundId The round ID to add rewards to
+     * @param amount Amount of USDT to add as rewards
+     */
+    function addRewardToRound(uint256 roundId, uint256 amount) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        require(amount > 0, "Reward amount must be greater than 0");
+        require(
+            usdtToken.transferFrom(msg.sender, address(this), amount * 10 ** USDT_DECIMALS),
+            "USDT transfer failed"
+        );
+        
+        // Add to round reward pool
+        roundRewardPool[roundId] += amount * 10 ** USDT_DECIMALS;
+        roundUSDTLedger[roundId] += amount * 10 ** USDT_DECIMALS; // Track total added
+        // Calculate reward per NFT for this round
+        uint256 totalNFTsInRound = roundTokenIds[roundId].length;
+        require(totalNFTsInRound > 0, "No NFTs in this round");
+        
+        // Update reward per NFT (cumulative)
+        roundRewardPerNFT[roundId] = roundRewardPool[roundId] / totalNFTsInRound;
+        
+        emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
+    }
+
+    /**
+     * @dev Claim all available rewards for an investor across all rounds
+     * @param investor The address to claim rewards for
+     * @return totalClaimed Total amount claimed
+     * @return claimedRounds Array of round IDs where claims were made
+     * @return claimedAmounts Array of amounts claimed per round
+     * @return usedTokenIds Array of token IDs used for claims
+     */
+    function claimAllRewards(address investor)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (
+            uint256 totalClaimed,
+            uint256[] memory claimedRounds,
+            uint256[] memory claimedAmounts,
+            uint256[] memory usedTokenIds
+        )
+    {
+        require(msg.sender == investor, "Can only claim for your own address");
+        
+        // Get claimable rewards
+        (
+            uint256 totalClaimable,
+            uint256[] memory roundIds,
+            uint256[] memory amounts,
+            ,  // nftCounts - unused in this function
+            uint256[] memory tokenIds
+        ) = this.calculateClaimableRewards(investor);
+        
+        require(totalClaimable > 0, "No rewards available to claim");
+        require(
+            usdtToken.balanceOf(address(this)) >= totalClaimable,
+            "Insufficient contract balance"
+        );
+        
+        // Process claims for each round
+        claimedRounds = new uint256[](roundIds.length);
+        claimedAmounts = new uint256[](roundIds.length);
+        usedTokenIds = tokenIds; // All valid token IDs are used
+        
+        for (uint256 i = 0; i < roundIds.length; i++) {
+            uint256 roundId = roundIds[i];
+            uint256 claimAmount = amounts[i];
+            
+            // Mark as claimed for this user and round
+            userClaimedRewards[investor][roundId] = claimAmount;
+            totalUserRewardsClaimed[investor] += claimAmount;
+            
+            // Add to claim history
+            rewardClaimHistory[roundId].push(claimAmount);
+            userRewardClaimHistory[investor].push(claimAmount);
+            
+            // Update round balance
+            roundUSDTLedger[roundId] += claimAmount; // Track total distributed
+            
+            claimedRounds[i] = roundId;
+            claimedAmounts[i] = claimAmount;
+            totalClaimed += claimAmount;
+        }
+        
+        // Transfer total claimed amount
+        require(
+            usdtToken.transfer(investor, totalClaimed),
+            "USDT transfer failed"
+        );
+        
+        // Emit comprehensive event
+        emit RewardsClaimed(
+            investor,
+            totalClaimed,
+            claimedRounds,
+            claimedAmounts,
+            usedTokenIds
+        );
+        
+        return (totalClaimed, claimedRounds, claimedAmounts, usedTokenIds);
+    }
+
+    /**
+     * @dev Get reward claim history for a user
+     * @param user The address to check
+     * @return claimHistory Array of claim amounts
+     * @return totalClaimed Total amount claimed by user
+     */
+    function getUserRewardHistory(address user)
+        external
+        view
+        returns (uint256[] memory claimHistory, uint256 totalClaimed)
+    {
+        return (userRewardClaimHistory[user], totalUserRewardsClaimed[user]);
+    }
+
+    /**
+     * @dev Get round reward information
+     * @param roundId The round ID to check
+     * @return totalPool Total reward pool for the round
+     * @return rewardPerNFT Reward amount per NFT
+     * @return claimHistory Array of all claims made from this round
+     */
+    function getRoundRewardInfo(uint256 roundId)
+        external
+        view
+        roundExists(roundId)
+        returns (
+            uint256 totalPool,
+            uint256 rewardPerNFT,
+            uint256[] memory claimHistory
+        )
+    {
+        return (
+            roundRewardPool[roundId],
+            roundRewardPerNFT[roundId],
+            rewardClaimHistory[roundId]
         );
     }
 }
