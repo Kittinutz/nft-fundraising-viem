@@ -267,6 +267,16 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     }
 
     /**
+     * @dev Lock transfer - only executor can call
+     */
+    function lockTransfer(uint256 tokenId) external onlyExecutor {
+        require(tokenExists[tokenId], "Token does not exist");
+        
+        investmentData[tokenId].transferLocked = true;
+        emit TransferLockUpdated(tokenId, true);
+    }
+
+    /**
      * @dev Unlock transfer after full redemption - only executor can call
      */
     function unlockTransfer(uint256 tokenId) external onlyExecutor {
