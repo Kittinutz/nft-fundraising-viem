@@ -276,7 +276,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         investmentData[tokenId].transferLocked = false;
         emit TransferLockUpdated(tokenId, false);
     }
-
+    
     /**
      * @dev Check if token transfer is locked
      */

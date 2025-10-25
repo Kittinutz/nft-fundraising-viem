@@ -47,14 +47,11 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256[]) public userInvestments; // user => tokenIds array
     mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound; // roundId => user => tokenIds array
     mapping(uint256 => uint256) public roundLedger; // roundId => USDT balance for each round
+    mapping(address => uint256[]) public investorRounds; // investor => roundIds array
     
     // New Reward Distribution Mappings
     mapping(uint256 => uint256) public roundRewardPool; // roundId => total reward pool amount
-    mapping(uint256 => uint256) public roundRewardPerNFT; // roundId => reward amount per NFT in this round
     mapping(address => mapping(uint256 => uint256)) public userClaimedRewards; // user => roundId => claimed amount
-    mapping(address => uint256) public totalUserRewardsClaimed; // user => total rewards claimed across all rounds
-    mapping(uint256 => uint256[]) public rewardClaimHistory; // roundId => array of claim amounts (for audit trail)
-    mapping(address => uint256[]) public userRewardClaimHistory; // user => array of claim transaction amounts
     mapping(address => uint256) public investorDividendsEarned; // user => total dividends earned from claims
     uint256 public _nextRoundId;
     uint256 public totalRoundsCreated;
@@ -241,10 +238,18 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         uint256[] storage userTokens = userInvestments[investor];
         uint256[] storage userRoundTokens = userNFTsInRound[roundId][investor];
         
+        // Track if this is the investor's first investment in this round
+        bool isFirstInvestmentInRound = userRoundTokens.length == 0;
+        
         for(uint256 i = 0; i < tokenAmount; i++){
             roundTokens.push(tokenIds[i]);
             userTokens.push(tokenIds[i]);
             userRoundTokens.push(tokenIds[i]);
+        }
+        
+        // Add round to investor's rounds list if this is their first investment in this round
+        if (isFirstInvestmentInRound) {
+            investorRounds[investor].push(roundId);
         }
         
         // Update round data (once, outside the loop)
@@ -367,7 +372,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     function _processRoundClaims(uint256[] memory tokenIds) internal {
         address sender = msg.sender; // Cache msg.sender
         uint256 currentTime = block.timestamp; // Cache timestamp
-        
         for (uint256 i = 0; i < tokenIds.length; i++) {
             // First check ownership (cheaper operation)
             if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
@@ -386,10 +390,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             // Skip if less than 180 days after round close (no claims allowed)
             if (timeSinceCloseDateInvestment < 180 days) continue;
             
-            // Cache calculations to avoid recalculating in events
-            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
-            uint256 rewardAmount = (principal * investment.rewardPercentage) / 10000;
-            
             if (timeSinceCloseDateInvestment >= 365 days) {
                 // Phase 3: Full redemption after 365 days from round close - burn NFT
                 dzNFT.markAsRedeemed(tokenIds[i]);
@@ -397,7 +397,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             } else if (timeSinceCloseDateInvestment >= 180 days && !investment.rewardClaimed) {
                 // Phase 2: First reward claim between 180-365 days after round close - mark claimed and lock transfers (half reward)
                 dzNFT.markRewardClaimed(tokenIds[i]);
-                emit EarlyRewardClaimed(tokenIds[i], sender, rewardAmount / 2);
             }
             // If between 180-365 days and already claimed, or not eligible, no action
         }
@@ -617,8 +616,6 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         uint256 totalNFTsInRound = roundTokenIds[roundId].length;
         require(totalNFTsInRound > 0, "No NFTs in this round");
         
-        // Update reward per NFT (cumulative)
-        roundRewardPerNFT[roundId] = roundRewardPool[roundId] / totalNFTsInRound;
         
         emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
     }
@@ -697,5 +694,45 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         }
         
         return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned, activeRounds);
+    }
+
+    /**
+     * @dev Get all investment rounds that an investor has participated in
+     * @param investor Address of the investor to get rounds for
+     * @return roundIds Array of round IDs the investor has participated in
+     * @return rounds Array of InvestmentRound structs for each round
+     */
+    function getInvestorRounds(address investor) 
+        external 
+        view 
+        returns (
+            uint256[] memory roundIds,
+            InvestmentRound[] memory rounds
+        ) 
+    {
+        require(investor != address(0), "Invalid investor address");
+        
+        roundIds = investorRounds[investor];
+        rounds = new InvestmentRound[](roundIds.length);
+        
+        for (uint256 i = 0; i < roundIds.length; i++) {
+            rounds[i] = investmentRounds[roundIds[i]];
+        }
+        
+        return (roundIds, rounds);
+    }
+
+    /**
+     * @dev Get round IDs that an investor has participated in (lightweight version)
+     * @param investor Address of the investor to get round IDs for
+     * @return roundIds Array of round IDs the investor has participated in
+     */
+    function getInvestorRoundIds(address investor) 
+        external 
+        view 
+        returns (uint256[] memory roundIds) 
+    {
+        require(investor != address(0), "Invalid investor address");
+        return investorRounds[investor];
     }
 }

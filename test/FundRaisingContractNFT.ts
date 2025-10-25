@@ -288,7 +288,6 @@ describe("FundRaisingContractNFT", async function () {
     assert.equal(formatEther(fundContractBalace), "30");
 
     const block = await publicClient.getBlock();
-    const currentRound = await fundContract.read.getInvestmentRound([0n]);
     await networkHelpers.mine();
     await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
     await networkHelpers.mine();
@@ -320,11 +319,34 @@ describe("FundRaisingContractNFT", async function () {
     const info = await fundContractW2.read.getInvestorDetail([
       wallet2.account.address,
     ]);
+    const [roundIds1, rounds1] = await fundContractW2.read.getInvestorRounds([
+      wallet2.account.address,
+    ]);
+    assert.equal(roundIds1.length, 1);
+    assert.equal(rounds1.length, 1);
     //test getInvestorDetail
     assert.equal(info[3], 1060n * 10n ** 18n); //dividend claimed
     assert.equal(info[2], 1000n * 10n ** 18n); // total invest
     assert.equal(info[0], 2n);
-    assert.deepEqual(info[1], [0n, 1n]); // token id
+    assert.deepEqual(info[1], [0n, 1n]); // token ids
+    // invest time 2nd round
+    const block2 = await publicClient.getBlock();
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundContract.address, 1000n * 10n ** 18n]);
+    await fundContract.write.createInvestmentRound([
+      "Round 2",
+      500n,
+      6n,
+      1000n,
+      BigInt(Number(block2.timestamp) + 30 * 24 * 60 * 60),
+      BigInt(Number(block2.timestamp) + 365 * 24 * 60 * 60),
+    ]);
+    await fundContractW2.write.investInRound([1n, 2n]);
+    const [roundIds, rounds] = await fundContractW2.read.getInvestorRounds([
+      wallet2.account.address,
+    ]);
+    assert.equal(roundIds.length, 2);
+    assert.equal(rounds.length, 2);
   });
 
   it("Owner withdraw fund and investor Redeem as  12 month be success", async function () {
