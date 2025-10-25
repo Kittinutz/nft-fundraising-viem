@@ -55,6 +55,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     mapping(address => uint256) public totalUserRewardsClaimed; // user => total rewards claimed across all rounds
     mapping(uint256 => uint256[]) public rewardClaimHistory; // roundId => array of claim amounts (for audit trail)
     mapping(address => uint256[]) public userRewardClaimHistory; // user => array of claim transaction amounts
+    mapping(address => uint256) public investorDividendsEarned; // user => total dividends earned from claims
     uint256 public _nextRoundId;
     uint256 public totalRoundsCreated;
     uint256 public totalUSDTRaised;
@@ -283,6 +284,9 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         // Second pass: process all eligible NFTs
         _processRoundClaims(userTokenIds);
+        
+        // Track total dividends earned by investor
+        investorDividendsEarned[msg.sender] += totalPayout;
         
         // Update round ledger and transfer
         roundRewardPool[roundId] -= totalPayout;
@@ -617,5 +621,81 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         roundRewardPerNFT[roundId] = roundRewardPool[roundId] / totalNFTsInRound;
         
         emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
+    }
+
+    /**
+     * @dev Get comprehensive investor details
+     * @param investor Address of the investor to get details for
+     * @return totalTokensOwned Total number of NFTs/tokens owned by the investor
+     * @return nftTokenIds Array of NFT token IDs owned by the investor
+     * @return totalInvestment Total USDT amount invested by the investor
+     * @return dividendsEarned Total dividends earned by the investor from claims
+     * @return activeRounds Array of round IDs where investor has investments and round is active
+     */
+    function getInvestorDetail(address investor) 
+        external 
+        view 
+        returns (
+            uint256 totalTokensOwned,
+            uint256[] memory nftTokenIds,
+            uint256 totalInvestment,
+            uint256 dividendsEarned,
+            uint256[] memory activeRounds
+        ) 
+    {
+        require(investor != address(0), "Invalid investor address");
+        
+        // Get all NFT token IDs owned by the investor
+        nftTokenIds = dzNFT.getWalletTokenIds(investor);
+        totalTokensOwned = nftTokenIds.length;
+        
+        // Get dividends earned from tracking
+        dividendsEarned = investorDividendsEarned[investor];
+        
+        if (totalTokensOwned == 0) {
+            return (0, nftTokenIds, 0, dividendsEarned, new uint256[](0));
+        }
+        
+        // Calculate total investment and find active rounds
+        uint256[] memory roundsInvested = new uint256[](totalRoundsCreated); // Temporary array
+        bool[] memory roundFoundFlags = new bool[](totalRoundsCreated); // Track which rounds found
+        uint256 uniqueRoundsCount = 0;
+        
+        for (uint256 i = 0; i < nftTokenIds.length; i++) {
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(nftTokenIds[i]);
+            
+            // Add to total investment (principal amount)
+            totalInvestment += (investment.totalTokenOpenInvestment * investment.tokenPrice);
+            
+            // Track unique rounds this investor has investments in
+            uint256 roundId = investment.roundId;
+            if (!roundFoundFlags[roundId]) {
+                roundsInvested[uniqueRoundsCount] = roundId;
+                roundFoundFlags[roundId] = true;
+                uniqueRoundsCount++;
+            }
+        }
+        
+        // Filter for active rounds only
+        uint256 activeRoundsCount = 0;
+        for (uint256 i = 0; i < uniqueRoundsCount; i++) {
+            uint256 roundId = roundsInvested[i];
+            if (investmentRounds[roundId].exists && investmentRounds[roundId].isActive) {
+                activeRoundsCount++;
+            }
+        }
+        
+        // Create final active rounds array
+        activeRounds = new uint256[](activeRoundsCount);
+        uint256 activeIndex = 0;
+        for (uint256 i = 0; i < uniqueRoundsCount; i++) {
+            uint256 roundId = roundsInvested[i];
+            if (investmentRounds[roundId].exists && investmentRounds[roundId].isActive) {
+                activeRounds[activeIndex] = roundId;
+                activeIndex++;
+            }
+        }
+        
+        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned, activeRounds);
     }
 }

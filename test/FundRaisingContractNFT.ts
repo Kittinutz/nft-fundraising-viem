@@ -317,6 +317,14 @@ describe("FundRaisingContractNFT", async function () {
       wallet2.account.address,
     ]);
     assert.equal(formatEther(afterClaimW2Balance2), "1060");
+    const info = await fundContractW2.read.getInvestorDetail([
+      wallet2.account.address,
+    ]);
+    //test getInvestorDetail
+    assert.equal(info[3], 1060n * 10n ** 18n); //dividend claimed
+    assert.equal(info[2], 1000n * 10n ** 18n); // total invest
+    assert.equal(info[0], 2n);
+    assert.deepEqual(info[1], [0n, 1n]); // token id
   });
 
   it("Owner withdraw fund and investor Redeem as  12 month be success", async function () {
