@@ -18,8 +18,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
     
     // Gas optimization constants
-    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 100;  // Prevent DoS attacks
-    uint256 public constant MAX_BATCH_CLAIM = 50;             // Limit batch operations
+    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 90;  // Prevent DoS attacks
+    uint256 public constant MAX_BATCH_CLAIM = 90;             // Limit batch operations
     
     enum Status { OPEN, CLOSED, COMPLETED , WITHDRAW_FUND, DIVIDEND_PAID }
     
@@ -707,19 +707,22 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         view 
         returns (
             uint256[] memory roundIds,
-            InvestmentRound[] memory rounds
+            InvestmentRound[] memory rounds,
+            uint256[][] memory nfts
         ) 
     {
         require(investor != address(0), "Invalid investor address");
         
         roundIds = investorRounds[investor];
         rounds = new InvestmentRound[](roundIds.length);
+        nfts = new uint256[][](roundIds.length);
         
         for (uint256 i = 0; i < roundIds.length; i++) {
             rounds[i] = investmentRounds[roundIds[i]];
+            nfts[i] = userNFTsInRound[roundIds[i]][investor];
         }
-        
-        return (roundIds, rounds);
+
+        return (roundIds, rounds, nfts);
     }
 
     /**

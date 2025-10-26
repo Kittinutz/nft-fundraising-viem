@@ -17,8 +17,8 @@ export default buildModule("FundRaisingContractNFT", (m) => {
     500n,
     6n,
     1000n,
-    Date.now() + 30 * 24 * 60 * 60 * 1000,
-    Date.now() + 365 * 24 * 60 * 60 * 1000,
+    BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
+    BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60),
   ]);
 
   return { fundRaisingContractNFT };
