@@ -296,6 +296,7 @@ describe("FundRaisingContractNFT", async function () {
     const afterClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
+
     assert.equal(formatEther(afterClaimW2Balance), "30");
 
     await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);

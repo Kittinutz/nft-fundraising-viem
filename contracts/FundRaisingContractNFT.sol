@@ -18,8 +18,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
     
     // Gas optimization constants
-    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 90;  // Prevent DoS attacks
-    uint256 public constant MAX_BATCH_CLAIM = 90;             // Limit batch operations
+    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 80;  // Prevent DoS attacks
+    uint256 public constant MAX_BATCH_CLAIM = 80;             // Limit batch operations
     
     enum Status { OPEN, CLOSED, COMPLETED , WITHDRAW_FUND, DIVIDEND_PAID }
     
@@ -191,12 +191,12 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             round.tokensSold + tokenAmount <= round.totalTokenOpenInvestment,
             "Not enough tokens available in this round"
         );
-        
         // Transfer USDT from investor to contract (amount in USDT 18 decimals)
         require(
             usdtToken.transferFrom(msg.sender, address(this), usdtAmount),
             "USDT transfer failed"
         );
+
         
         // Cache variables to reduce storage reads
         address investor = msg.sender;
@@ -209,6 +209,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         uint256[] memory tokenIds;
         if (tokenAmount > 1) {
             // Batch mint for multiple tokens
+
             tokenIds = dzNFT.batchMintNFT(
                 investor,
                 tokenAmount,
@@ -219,6 +220,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
                 closeDateInvestment,
                 endDateInvestment
             );
+
         } else {
             // Single mint for one token
             tokenIds = new uint256[](1);
@@ -232,7 +234,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
                 endDateInvestment
             );
         }
-        
+
         // Batch update storage arrays (more gas efficient than individual pushes)
         uint256[] storage roundTokens = roundTokenIds[roundId];
         uint256[] storage userTokens = userInvestments[investor];
@@ -246,11 +248,13 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
             userTokens.push(tokenIds[i]);
             userRoundTokens.push(tokenIds[i]);
         }
+
         
         // Add round to investor's rounds list if this is their first investment in this round
         if (isFirstInvestmentInRound) {
             investorRounds[investor].push(roundId);
         }
+
         
         // Update round data (once, outside the loop)
         round.tokensSold += tokenAmount;
@@ -259,8 +263,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         
         return tokenIds[0]; // Return first token ID for backward compatibility
     }
-    
-   
+
     /**
      * @dev Claim rewards for all user's NFTs in a specific round
      */
@@ -278,6 +281,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         (uint256 totalPayout, uint256 processedCount) = _calculateRoundPayout(userTokenIds);
         require(processedCount > 0, "No eligible NFTs to claim");
         require(totalPayout > 0, "No amount to claim");
+      
         require(
             usdtToken.balanceOf(address(this)) >= totalPayout,
             "Insufficient contract USDT balance"
@@ -409,9 +413,11 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         external 
         view 
         roundExists(roundId) 
-        returns (InvestmentRound memory) 
+        returns (InvestmentRound memory, bool enableClaimReward) 
     {
-        return investmentRounds[roundId];
+        InvestmentRound memory round = investmentRounds[roundId];
+        bool isEnableClaimReward = isClaimRewardEnabled(roundId);
+        return (round, isEnableClaimReward);
     }
     
     /**
@@ -621,6 +627,31 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
+     * @dev Check if claim rewards are enabled for a specific round
+     * @param roundId The ID of the round to check
+     * @return enabled True if claim rewards are enabled (180+ days since close date), false otherwise
+     */
+    function isClaimRewardEnabled(uint256 roundId) 
+        internal 
+        view 
+        roundExists(roundId) 
+        returns (bool enabled) 
+    {
+        InvestmentRound memory round = investmentRounds[roundId];
+        uint256 currentTime = block.timestamp;
+        
+        // Check if current time is past the close date
+        if (currentTime <= round.closeDateInvestment) {
+            return false;
+        }
+        
+        uint256 timeSinceCloseDateInvestment = currentTime - round.closeDateInvestment;
+        
+        // Return true if 180 days or more have passed since close date
+        return timeSinceCloseDateInvestment >= 180 days;
+    }
+
+    /**
      * @dev Get comprehensive investor details
      * @param investor Address of the investor to get details for
      * @return totalTokensOwned Total number of NFTs/tokens owned by the investor
@@ -708,7 +739,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         returns (
             uint256[] memory roundIds,
             InvestmentRound[] memory rounds,
-            uint256[][] memory nfts
+            uint256[][] memory nfts,
+            bool[] memory isEnableClaimReward
         ) 
     {
         require(investor != address(0), "Invalid investor address");
@@ -716,13 +748,15 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         roundIds = investorRounds[investor];
         rounds = new InvestmentRound[](roundIds.length);
         nfts = new uint256[][](roundIds.length);
+        isEnableClaimReward = new bool[](roundIds.length);
         
         for (uint256 i = 0; i < roundIds.length; i++) {
             rounds[i] = investmentRounds[roundIds[i]];
             nfts[i] = userNFTsInRound[roundIds[i]][investor];
+            isEnableClaimReward[i] = isClaimRewardEnabled(roundIds[i]);
         }
 
-        return (roundIds, rounds, nfts);
+        return (roundIds, rounds, nfts, isEnableClaimReward);
     }
 
     /**

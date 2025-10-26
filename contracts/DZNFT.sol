@@ -153,7 +153,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256[] memory tokenIds) {
         require(to != address(0), "Invalid recipient address");
-        require(count > 0, "Invalid count (1-xxx)");
+        require(count > 0 && count <= 80, "Invalid count (1-80)");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0, "Invalid reward percentage");
         require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
@@ -162,7 +162,6 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         
         tokenIds = new uint256[](count);
         uint256 purchaseTime = block.timestamp; // Cache timestamp for gas optimization
-        
         for (uint256 i = 0; i < count; i++) {
             uint256 tokenId = _nextTokenId++;
             tokenIds[i] = tokenId;
