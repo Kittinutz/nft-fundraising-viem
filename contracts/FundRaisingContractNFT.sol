@@ -18,8 +18,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public constant USDT_DECIMALS = 18;   // USDT uses 18 decimals in this contract
     
     // Gas optimization constants
-    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 80;  // Prevent DoS attacks
-    uint256 public constant MAX_BATCH_CLAIM = 80;             // Limit batch operations
+    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 50;  // Prevent DoS attacks
+    uint256 public constant MAX_BATCH_CLAIM = 50;             // Limit batch operations
     
     enum Status { OPEN, CLOSED, COMPLETED , WITHDRAW_FUND, DIVIDEND_PAID }
     
@@ -265,7 +265,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     }
 
     /**
-     * @dev Claim rewards for all user's NFTs in a specific round
+     * @dev Claim rewards for all user's NFTs in a specific round (using ERC721Enumerable for tradable NFTs)
      */
     function claimRewardRound(uint256 roundId) 
         external 
@@ -273,7 +273,8 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         whenNotPaused 
         roundExists(roundId) 
     {
-        uint256[] memory userTokenIds = userNFTsInRound[roundId][msg.sender];
+        // Get user's NFTs for this round directly from DZNFT contract (supports tradable NFTs)
+        uint256[] memory userTokenIds = dzNFT.getUserNFTsByRound(msg.sender, roundId);
         require(userTokenIds.length > 0, "No NFTs in this round");
         require(userTokenIds.length <= MAX_BATCH_CLAIM, "Too many NFTs to claim at once, please split into smaller batches");
         

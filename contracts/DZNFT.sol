@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
@@ -10,9 +11,9 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 
 /**
  * @title DZNFT
- * @dev NFT contract for investment rounds with role-based access control
+ * @dev NFT contract for investment rounds with role-based access control and enumerable functionality
  */
-contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
+contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessControl, Pausable {
     bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
     
     uint256 private _nextTokenId;
@@ -153,7 +154,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256[] memory tokenIds) {
         require(to != address(0), "Invalid recipient address");
-        require(count > 0 && count <= 80, "Invalid count (1-80)");
+        require(count > 0 && count <= 50, "Invalid count (1-80)");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0, "Invalid reward percentage");
         require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
@@ -411,7 +412,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     function supportsInterface(bytes4 interfaceId) 
         public 
         view 
-        override(ERC721, AccessControl) 
+        override(ERC721, ERC721Enumerable, AccessControl) 
         returns (bool) 
     {
         return super.supportsInterface(interfaceId);
@@ -423,7 +424,7 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     function _update(address to, uint256 tokenId, address auth)
         internal
         virtual
-        override
+        override(ERC721, ERC721Enumerable)
         returns (address)
     {
         require(!paused(), "Token transfer while paused");
@@ -434,6 +435,16 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
         }
         
         return super._update(to, tokenId, auth);
+    }
+
+    /**
+     * @dev Override required for ERC721Enumerable
+     */
+    function _increaseBalance(address account, uint128 value) 
+        internal 
+        override(ERC721, ERC721Enumerable) 
+    {
+        super._increaseBalance(account, value);
     }
 
     /**
@@ -680,5 +691,40 @@ contract DZNFT is ERC721, ERC721Burnable, Ownable, AccessControl, Pausable {
     {
         require(walletAddress != address(0), "Invalid wallet address");
         return _getAllTokensOwnedBy(walletAddress);
+    }
+
+    /**
+     * @dev Get user's NFTs for a specific round using ERC721Enumerable (for tradable NFTs)
+     * @param user The address to get NFTs for
+     * @param roundId The round ID to filter by
+     * @return tokenIds Array of token IDs owned by user in the specified round
+     */
+    function getUserNFTsByRound(address user, uint256 roundId) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds) 
+    {
+        require(user != address(0), "Invalid user address");
+        
+        uint256 userBalance = balanceOf(user);
+        uint256[] memory userTokenIds = new uint256[](userBalance);
+        uint256 matchingTokensCount = 0;
+        
+        // First pass: count matching tokens and collect them
+        for (uint256 i = 0; i < userBalance; i++) {
+            uint256 tokenId = tokenOfOwnerByIndex(user, i);
+            if (tokenExists[tokenId] && investmentData[tokenId].roundId == roundId) {
+                userTokenIds[matchingTokensCount] = tokenId;
+                matchingTokensCount++;
+            }
+        }
+        
+        // Second pass: create final array with exact size
+        tokenIds = new uint256[](matchingTokensCount);
+        for (uint256 i = 0; i < matchingTokensCount; i++) {
+            tokenIds[i] = userTokenIds[i];
+        }
+        
+        return tokenIds;
     }
 }

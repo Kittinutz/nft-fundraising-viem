@@ -1038,4 +1038,397 @@ describe("FundRaisingContractNFT", async function () {
       );
     });
   });
+
+  it("Should transfer NFTs and allow new owner to claim rewards", async function () {
+    const fundContract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address
+    );
+    const fundContractW2 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address,
+      {
+        client: { wallet: wallet2 },
+      }
+    );
+    const fundContractW3 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address,
+      {
+        client: { wallet: wallet3 },
+      }
+    );
+
+    const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
+    const nft = await viem.getContractAt("DZNFT", nftContract?.address);
+    const nftW2 = await viem.getContractAt("DZNFT", nftContract?.address, {
+      client: { wallet: wallet2 },
+    });
+
+    // Mint USDT to wallet2 for investment
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+
+    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
+      client: { wallet: wallet2 },
+    });
+
+    // Get current block timestamp for proper date calculation
+    const currentBlock = await publicClient.getBlock();
+    const currentTime = Number(currentBlock.timestamp);
+
+    // Create investment round
+    await fundContract.write.createInvestmentRound([
+      "Transfer Test Round",
+      500n, // 500 wei per token
+      6n, // 6% reward
+      1000n, // 1000 tokens available
+      BigInt(currentTime + 30 * 24 * 60 * 60), // 30 days in seconds
+      BigInt(currentTime + 365 * 24 * 60 * 60), // 1 year in seconds
+    ]);
+
+    // Wallet2 approves and invests 2 tokens (2 * 500 = 1000 wei)
+    await usdtW2.write.approve([fundContract.address, 1000n * 10n ** 18n]);
+    await fundContractW2.write.investInRound([0n, 2n]);
+
+    // Verify wallet2 has 2 NFTs
+    const nftBalanceW2Before = await nftContract.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    assert.equal(nftBalanceW2Before, 2n, "Wallet2 should have 2 NFTs");
+
+    // Get token IDs owned by wallet2
+    const tokenIds = await nft.read.getWalletTokenIds([
+      wallet2.account.address,
+    ]);
+    assert.equal(tokenIds.length, 2, "Should have 2 token IDs");
+
+    // Transfer both NFTs from wallet2 to wallet3
+    await nftW2.write.transferFrom([
+      wallet2.account.address,
+      wallet3.account.address,
+      tokenIds[0],
+    ]);
+    await nftW2.write.transferFrom([
+      wallet2.account.address,
+      wallet3.account.address,
+      tokenIds[1],
+    ]);
+
+    // Verify transfer completed
+    const nftBalanceW2After = await nftContract.read.balanceOf([
+      wallet2.account.address,
+    ]);
+    const nftBalanceW3After = await nftContract.read.balanceOf([
+      wallet3.account.address,
+    ]);
+    assert.equal(
+      nftBalanceW2After,
+      0n,
+      "Wallet2 should have 0 NFTs after transfer"
+    );
+    assert.equal(
+      nftBalanceW3After,
+      2n,
+      "Wallet3 should have 2 NFTs after transfer"
+    );
+
+    // Verify wallet3 owns the specific token IDs
+    const ownerToken0 = await nft.read.ownerOf([tokenIds[0]]);
+    const ownerToken1 = await nft.read.ownerOf([tokenIds[1]]);
+    assert.equal(
+      ownerToken0.toLowerCase(),
+      wallet3.account.address.toLowerCase(),
+      "Wallet3 should own token 0"
+    );
+    assert.equal(
+      ownerToken1.toLowerCase(),
+      wallet3.account.address.toLowerCase(),
+      "Wallet3 should own token 1"
+    );
+
+    // Owner withdraws fund from round
+    await fundContract.write.withdrawFund([0n]);
+    const ownerUsdt = await usdt.read.balanceOf([wallet1.account.address]);
+    assert.equal(
+      formatEther(ownerUsdt),
+      "2000",
+      "Owner should receive investment funds"
+    );
+
+    // Setup rewards for claiming
+    await usdt.write.mint([wallet1.account.address, 30n * 10n ** 18n]);
+    await usdt.write.approve([fundContract.address, 30n * 10n ** 18n]);
+    await fundContract.write.addRewardToRound([0n, 30n]);
+
+    const fundContractBalance = await usdt.read.balanceOf([
+      fundContract.address,
+    ]);
+    assert.equal(
+      formatEther(fundContractBalance),
+      "30",
+      "Contract should have 30 USDT for rewards"
+    );
+
+    // Fast forward time to 7 months (for partial claim)
+    await networkHelpers.mine();
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
+    await networkHelpers.mine();
+
+    // Wallet3 (new owner) claims reward
+    const beforeClaimW3Balance = await usdt.read.balanceOf([
+      wallet3.account.address,
+    ]);
+    assert.equal(
+      formatEther(beforeClaimW3Balance),
+      "0",
+      "Wallet3 should start with 0 USDT"
+    );
+
+    await fundContractW3.write.claimRewardRound([0n]);
+
+    const afterClaimW3Balance = await usdt.read.balanceOf([
+      wallet3.account.address,
+    ]);
+    assert.equal(
+      formatEther(afterClaimW3Balance),
+      "30",
+      "Wallet3 should receive 30 USDT reward"
+    );
+
+    // Add more rewards for final claim
+    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
+    await usdt.write.approve([fundContract.address, 1030n * 10n ** 18n]);
+    await fundContract.write.addRewardToRound([0n, 1030n]);
+
+    // Fast forward time to 12+ months (for full redemption)
+    await networkHelpers.mine();
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 10);
+    await networkHelpers.mine();
+
+    // Wallet3 claims final reward + principal
+    await fundContractW3.write.claimRewardRound([0n]);
+
+    const finalClaimW3Balance = await usdt.read.balanceOf([
+      wallet3.account.address,
+    ]);
+    assert.equal(
+      formatEther(finalClaimW3Balance),
+      "1060",
+      "Wallet3 should receive total 1060 USDT (30 + 1030)"
+    );
+
+    // Verify wallet2 has no claims (since NFTs were transferred)
+    const wallet2Info = await fundContractW2.read.getInvestorDetail([
+      wallet2.account.address,
+    ]);
+    assert.equal(
+      wallet2Info[0],
+      0n,
+      "Wallet2 should have 0 NFTs after transfer"
+    );
+    assert.equal(wallet2Info[3], 0n, "Wallet2 should have 0 claimed dividends");
+
+    // Verify wallet3 has the investment details
+    const wallet3Info = await fundContractW3.read.getInvestorDetail([
+      wallet3.account.address,
+    ]);
+    assert.equal(wallet3Info[0], 2n, "Wallet3 should have 2 NFTs");
+    assert.equal(
+      wallet3Info[3],
+      1060n * 10n ** 18n,
+      "Wallet3 should have claimed 1060 USDT in dividends"
+    );
+
+    console.log("\n=== NFT Transfer and Claim Test Results ===");
+    console.log(`Original investor (Wallet2): ${wallet2.account.address}`);
+    console.log(`New owner (Wallet3): ${wallet3.account.address}`);
+    console.log(`NFTs transferred: ${tokenIds.length}`);
+    console.log(
+      `Total rewards claimed by new owner: ${formatEther(
+        finalClaimW3Balance
+      )} USDT`
+    );
+  });
+
+  it("Should test NFT transfer lock mechanism", async function () {
+    const fundContract = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address
+    );
+    const fundContractW2 = await viem.getContractAt(
+      "FundRaisingContractNFT",
+      fundContractNFT?.address,
+      {
+        client: { wallet: wallet2 },
+      }
+    );
+
+    const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
+    const nft = await viem.getContractAt("DZNFT", nftContract?.address);
+    const nftW2 = await viem.getContractAt("DZNFT", nftContract?.address, {
+      client: { wallet: wallet2 },
+    });
+
+    // Mint USDT to wallet2 for investment
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+
+    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
+      client: { wallet: wallet2 },
+    });
+
+    // Get current block timestamp for proper date calculation
+    const currentBlock = await publicClient.getBlock();
+    const currentTime = Number(currentBlock.timestamp);
+
+    // Create investment round
+    await fundContract.write.createInvestmentRound([
+      "Lock Test Round",
+      500n, // 500 wei per token
+      6n, // 6% reward
+      1000n, // 1000 tokens available
+      BigInt(currentTime + 30 * 24 * 60 * 60), // 30 days in seconds
+      BigInt(currentTime + 365 * 24 * 60 * 60), // 1 year in seconds
+    ]);
+
+    // Wallet2 approves and invests 2 tokens
+    await usdtW2.write.approve([fundContract.address, 1000n * 10n ** 18n]);
+    await fundContractW2.write.investInRound([0n, 2n]);
+
+    // Get token IDs owned by wallet2
+    const tokenIds = await nft.read.getWalletTokenIds([
+      wallet2.account.address,
+    ]);
+    assert.equal(tokenIds.length, 2, "Should have 2 token IDs");
+
+    const tokenId1 = tokenIds[0];
+    const tokenId2 = tokenIds[1];
+
+    // Test 1: Initially NFTs should be unlocked (transferable)
+    const isLocked1Initial = await nft.read.isTransferLocked([tokenId1]);
+    const isLocked2Initial = await nft.read.isTransferLocked([tokenId2]);
+    assert.equal(
+      isLocked1Initial,
+      false,
+      "Token 1 should initially be unlocked"
+    );
+    assert.equal(
+      isLocked2Initial,
+      false,
+      "Token 2 should initially be unlocked"
+    );
+
+    // Test 2: Transfer should work when unlocked
+    await nftW2.write.transferFrom([
+      wallet2.account.address,
+      wallet3.account.address,
+      tokenId1,
+    ]);
+
+    // Verify transfer succeeded
+    const newOwner = await nft.read.ownerOf([tokenId1]);
+    assert.equal(
+      newOwner.toLowerCase(),
+      wallet3.account.address.toLowerCase(),
+      "Token 1 should be transferred to wallet3"
+    );
+
+    // Transfer token back to wallet2 for lock testing
+    const nftW3 = await viem.getContractAt("DZNFT", nftContract?.address, {
+      client: { wallet: wallet3 },
+    });
+    await nftW3.write.transferFrom([
+      wallet3.account.address,
+      wallet2.account.address,
+      tokenId1,
+    ]);
+
+    // Test 3: Lock the tokens
+    await nft.write.lockTransfer([tokenId1]);
+    await nft.write.lockTransfer([tokenId2]);
+
+    // Verify tokens are locked
+    const isLocked1After = await nft.read.isTransferLocked([tokenId1]);
+    const isLocked2After = await nft.read.isTransferLocked([tokenId2]);
+    assert.equal(isLocked1After, true, "Token 1 should be locked");
+    assert.equal(isLocked2After, true, "Token 2 should be locked");
+
+    // Test 4: Transfer should fail when locked
+    let transferFailed = false;
+    try {
+      await nftW2.write.transferFrom([
+        wallet2.account.address,
+        wallet3.account.address,
+        tokenId1,
+      ]);
+    } catch (error: any) {
+      transferFailed = true;
+      assert(
+        error.message.includes("Token transfer locked"),
+        "Should fail with 'Token transfer locked' message"
+      );
+    }
+    assert.equal(
+      transferFailed,
+      true,
+      "Transfer should fail when token is locked"
+    );
+
+    // Test 5: Try to unlock without redemption (should fail)
+    let unlockFailed = false;
+    try {
+      await nft.write.unlockTransfer([tokenId1]);
+    } catch (error: any) {
+      unlockFailed = true;
+      assert(
+        error.message.includes("Must be redeemed first"),
+        "Should fail with 'Must be redeemed first' message"
+      );
+    }
+    assert.equal(unlockFailed, true, "Unlock should fail when not redeemed");
+
+    // Test 6: Mark token as redeemed and unlock
+    await nft.write.markAsRedeemed([tokenId1]);
+
+    // Now unlock should work
+    await nft.write.unlockTransfer([tokenId1]);
+
+    // Verify token is unlocked
+    const isUnlocked = await nft.read.isTransferLocked([tokenId1]);
+    assert.equal(
+      isUnlocked,
+      false,
+      "Token 1 should be unlocked after redemption"
+    );
+
+    // Test 7: Transfer should work again after unlock
+    await nftW2.write.transferFrom([
+      wallet2.account.address,
+      wallet3.account.address,
+      tokenId1,
+    ]);
+
+    // Verify final transfer
+    const finalOwner = await nft.read.ownerOf([tokenId1]);
+    assert.equal(
+      finalOwner.toLowerCase(),
+      wallet3.account.address.toLowerCase(),
+      "Token 1 should be transferred to wallet3 after unlock"
+    );
+
+    // Test 8: Verify token 2 is still locked
+    const isStillLocked = await nft.read.isTransferLocked([tokenId2]);
+    assert.equal(isStillLocked, true, "Token 2 should still be locked");
+
+    console.log("\n=== NFT Transfer Lock Test Results ===");
+    console.log(`✅ Initial state: Tokens unlocked and transferable`);
+    console.log(`✅ Lock mechanism: Transfers blocked when locked`);
+    console.log(`✅ Unlock protection: Requires redemption before unlock`);
+    console.log(
+      `✅ Post-unlock: Transfers work again after redemption + unlock`
+    );
+    console.log(`Token 1 final owner: ${finalOwner}`);
+    console.log(
+      `Token 2 lock status: ${isStillLocked ? "Locked" : "Unlocked"}`
+    );
+  });
 });

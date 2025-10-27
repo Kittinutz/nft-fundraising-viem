@@ -5,7 +5,7 @@ import { network } from "hardhat";
 import { formatEther } from "ox/Value";
 import { parseEther } from "viem";
 
-describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async function () {
+describe("FundRaisingContractNFT - 50 Token Investment Tests", async function () {
   const { viem, networkHelpers } = await network.connect();
   const publicClient = await viem.getPublicClient();
   const [owner, investor1, investor2] = await viem.getWalletClients();
@@ -127,9 +127,9 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       );
     });
 
-    it("Should successfully invest exactly 80 tokens at 500 USDT per token", async function () {
-      // Test with 80 tokens (new maximum limit)
-      const tokenAmount = 80n;
+    it("Should successfully invest exactly 50 tokens at 500 USDT per token", async function () {
+      // Test with 50 tokens
+      const tokenAmount = 50n;
       const tokenPrice = 500n;
       const rewardPercentage = 10n;
       const totalTokensAvailable = 1000n;
@@ -140,7 +140,7 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       const endDate = BigInt(currentTime + 365 * 24 * 60 * 60);
 
       await fundContract.write.createInvestmentRound([
-        "80 Token Test Round",
+        "50 Token Test Round",
         tokenPrice,
         rewardPercentage,
         totalTokensAvailable,
@@ -173,7 +173,7 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         investor1.account.address,
       ]);
 
-      // Invest 80 tokens - should work reliably within gas limits
+      // Invest 50 tokens - should work reliably within gas limits
       await fundContractInvestor.write.investInRound([0n, tokenAmount]);
 
       const balanceAfter = await usdtContract.read.balanceOf([
@@ -184,15 +184,15 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       ]);
       const spentAmount = balanceBefore - balanceAfter;
 
-      assert.equal(formatEther(spentAmount), "40000");
-      assert.equal(nftBalance, 80n);
+      assert.equal(formatEther(spentAmount), "25000");
+      assert.equal(nftBalance, 50n);
 
       console.log(
-        `✅ Successfully invested 80 tokens for ${formatEther(totalCost)} USDT`
+        `✅ Successfully invested 50 tokens for ${formatEther(totalCost)} USDT`
       );
     });
 
-    it("Should reject investment of 81 tokens (over limit)", async function () {
+    it("Should reject investment of 51 tokens (over limit)", async function () {
       const currentBlock = await publicClient.getBlock();
       const currentTime = Number(currentBlock.timestamp);
       const closeDate = BigInt(currentTime + 30 * 24 * 60 * 60);
@@ -224,19 +224,19 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
 
       await usdtContractInvestor.write.approve([
         fundContract.address,
-        parseEther("50000"),
+        parseEther("30000"),
       ]);
 
       try {
-        await fundContractInvestor.write.investInRound([0n, 81n]);
-        assert.fail("Should have rejected 81 token investment");
+        await fundContractInvestor.write.investInRound([0n, 51n]);
+        assert.fail("Should have rejected 51 token investment");
       } catch (error: any) {
         assert.ok(
           error.message.includes(
             "Token amount exceeds maximum allowed per transaction"
           )
         );
-        console.log("✅ Successfully rejected 81 token investment");
+        console.log("✅ Successfully rejected 51 token investment");
       }
     });
 
@@ -284,9 +284,9 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         }
       );
 
-      // Both investors invest 60 tokens each (within 80 token limit)
-      const investmentAmount = 60n; // Use 60 tokens each
-      const totalCost = parseEther("30000"); // 60 * 500 USDT
+      // Both investors invest 40 tokens each (within 50 token limit)
+      const investmentAmount = 40n; // Use 40 tokens each
+      const totalCost = parseEther("20000"); // 40 * 500 USDT
 
       await usdtContractInvestor1.write.approve([
         fundContract.address,
@@ -307,11 +307,11 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         investor2.account.address,
       ]);
 
-      assert.equal(investor1NFTs, 60n);
-      assert.equal(investor2NFTs, 60n);
+      assert.equal(investor1NFTs, 40n);
+      assert.equal(investor2NFTs, 40n);
 
       const round = await fundContract.read.investmentRounds([0n]);
-      assert.equal(round[5], 120n); // Should show 120 tokens sold total
+      assert.equal(round[5], 80n); // Should show 80 tokens sold total
 
       console.log("✅ Successfully completed multiple large investments");
     });
@@ -458,16 +458,16 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       );
     });
 
-    it("Should successfully claim rewards for 80 tokens after 180 days", async function () {
-      // Test claiming rewards with maximum token amount (80 tokens)
-      const tokenAmount = 80n;
+    it("Should successfully claim rewards for 50 tokens after 180 days", async function () {
+      // Test claiming rewards with maximum token amount (50 tokens)
+      const tokenAmount = 50n;
       const currentBlock = await publicClient.getBlock();
       const currentTime = Number(currentBlock.timestamp);
       const closeDate = BigInt(currentTime + 30 * 24 * 60 * 60);
       const endDate = BigInt(currentTime + 365 * 24 * 60 * 60);
 
       await fundContract.write.createInvestmentRound([
-        "80 Token Claim Test",
+        "50 Token Claim Test",
         500n,
         1000n, // 10% in basis points (1000/10000 = 10%)
         1000n,
@@ -490,16 +490,16 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         }
       );
 
-      // Invest 80 tokens (maximum allowed)
-      const totalCost = parseEther("40000"); // 80 * 500 USDT
+      // Invest 50 tokens (maximum allowed)
+      const totalCost = parseEther("25000"); // 50 * 500 USDT
       await usdtContractInvestor.write.approve([
         fundContract.address,
         totalCost,
       ]);
 
-      // Invest 80 tokens - should work reliably within gas limits
+      // Invest 50 tokens - should work reliably within gas limits
       await fundContractInvestor.write.investInRound([0n, tokenAmount]);
-      console.log("✅ Successfully invested 80 tokens");
+      console.log("✅ Successfully invested 50 tokens");
 
       // Verify investment succeeded
       const nftBalance = await nftContract.read.balanceOf([
@@ -508,14 +508,14 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       assert.equal(nftBalance, tokenAmount);
 
       // Add rewards to the round
-      // For 80 tokens: 40,000 * 10% = 4,000 USDT reward
+      // For 50 tokens: 25,000 * 10% = 2,500 USDT reward
       // But ensure we have enough USDT in contract for the claim calculation
-      const expectedReward = 4000n;
-      const rewardAmount = parseEther("250000"); // Add plenty of USDT to be safe
+      const expectedReward = 2500n;
+      const rewardAmount = parseEther("200000"); // Add plenty of USDT to be safe
 
       await usdtContract.write.mint([owner.account.address, rewardAmount]);
       await usdtContract.write.approve([fundContract.address, rewardAmount]);
-      await fundContract.write.addRewardToRound([0n, 250000n]); // Add large reward pool
+      await fundContract.write.addRewardToRound([0n, 200000n]); // Add large reward pool
 
       // Fast forward time to round close date + 180 days
       await networkHelpers.time.increaseTo(Number(closeDate) + 1);
@@ -534,8 +534,8 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         const claimedAmount = balanceAfter - balanceBefore;
 
         // Should receive half the reward at 180 days
-        // With 250,000 USDT reward pool and 80 NFTs, should get reasonable amount
-        const totalPoolAmount = parseEther("250000");
+        // With 200,000 USDT reward pool and 50 NFTs, should get reasonable amount
+        const totalPoolAmount = parseEther("200000");
         const expectedClaim = totalPoolAmount / 2n; // Half at 180 days
 
         console.log(
@@ -562,16 +562,16 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       }
     });
 
-    it("Should successfully redeem 80 tokens after 365 days with full rewards", async function () {
+    it("Should successfully redeem 50 tokens after 365 days with full rewards", async function () {
       // Test full redemption with maximum token amount
-      const tokenAmount = 80n;
+      const tokenAmount = 50n;
       const currentBlock = await publicClient.getBlock();
       const currentTime = Number(currentBlock.timestamp);
       const closeDate = BigInt(currentTime + 30 * 24 * 60 * 60);
       const endDate = BigInt(currentTime + 365 * 24 * 60 * 60);
 
       await fundContract.write.createInvestmentRound([
-        "80 Token Full Redemption Test",
+        "50 Token Full Redemption Test",
         500n,
         10n, // 10% in basis points
         1000n,
@@ -594,14 +594,14 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         }
       );
 
-      // Invest 80 tokens (maximum allowed)
-      const totalCost = parseEther("40000");
+      // Invest 50 tokens (maximum allowed)
+      const totalCost = parseEther("25000");
       await usdtContractInvestor.write.approve([
         fundContract.address,
         totalCost,
       ]);
 
-      // Invest 80 tokens - should work reliably within gas limits
+      // Invest 50 tokens - should work reliably within gas limits
       await fundContractInvestor.write.investInRound([0n, tokenAmount]);
 
       // Calculate total redemption needed: Principal + Full Reward
@@ -667,20 +667,20 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       }
     });
 
-    it("Should verify maximum claim limits (MAX_BATCH_CLAIM = 80)", async function () {
-      // This test verifies that the claim system can handle up to 80 NFTs
+    it("Should verify maximum claim limits (MAX_BATCH_CLAIM = 50)", async function () {
+      // This test verifies that the claim system can handle up to 50 NFTs
 
       console.log("📊 Contract limits verification:");
       const maxTokensPerInvestment =
         await fundContract.read.MAX_TOKENS_PER_INVESTMENT();
       const maxBatchClaim = await fundContract.read.MAX_BATCH_CLAIM();
 
-      assert.equal(maxTokensPerInvestment, 80n);
-      assert.equal(maxBatchClaim, 80n);
+      assert.equal(maxTokensPerInvestment, 50n);
+      assert.equal(maxBatchClaim, 50n);
 
       console.log(`✅ MAX_TOKENS_PER_INVESTMENT: ${maxTokensPerInvestment}`);
       console.log(`✅ MAX_BATCH_CLAIM: ${maxBatchClaim}`);
-      console.log(`✅ Contract configured for 80 token operations`);
+      console.log(`✅ Contract configured for 50 token operations`);
     });
   });
 
@@ -695,7 +695,7 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
         "Insufficient Tokens Test",
         500n,
         10n,
-        50n, // Only 50 tokens available
+        40n, // Only 40 tokens available
         closeDate,
         endDate,
       ]);
@@ -721,7 +721,7 @@ describe("FundRaisingContractNFT - 80 Token Maximum Investment Tests", async fun
       ]);
 
       try {
-        await fundContractInvestor.write.investInRound([0n, 80n]);
+        await fundContractInvestor.write.investInRound([0n, 50n]); // Try to invest 50 but only 40 available
         assert.fail(
           "Should have rejected investment exceeding available tokens"
         );
