@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
-import "hardhat/console.sol";
 /**
  * @title FundRaisingCore
  * @dev Core functionality for investment rounds and NFT minting (reduced size)
@@ -100,6 +99,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         require(bytes(roundName).length > 0, "Round name cannot be empty");
         require(tokenPrice > 0, "Token price must be greater than 0");
         require(totalTokenOpenInvestment > 0, "Total token open investment must be greater than 0");
+        require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage (0-10000)");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
@@ -150,7 +150,6 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
             usdtToken.transferFrom(msg.sender, address(this), usdtAmount),
             "USDT transfer failed"
         );
-        console.log("USDT Amount Invested:",  round.tokenPrice);
         // Mint NFTs
         uint256[] memory tokenIds;
         if (tokenAmount > 1) {
@@ -228,6 +227,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     function withdrawFund(uint256 roundId) 
         external 
         onlyOwner 
+        nonReentrant
         roundExists(roundId) 
     {
         uint256 amount = roundLedger[roundId];
@@ -304,10 +304,9 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     /**
      * @dev Transfer rewards from core contract to claimant via claims contract
      * @param roundId The round ID
-     * @param claimant The address claiming rewards
      * @param amount The amount to transfer
      */
-    function transferRewardToClaims(uint256 roundId, address claimant, uint256 amount) external {
+    function transferRewardToClaims(uint256 roundId, uint256 amount) external {
         require(msg.sender != address(0), "Invalid sender");
         require(amount > 0, "Invalid amount");
         require(roundRewardPool[roundId] >= amount, "Insufficient reward pool");

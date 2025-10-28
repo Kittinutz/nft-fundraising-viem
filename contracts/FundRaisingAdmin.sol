@@ -101,8 +101,12 @@ contract FundRaisingAdmin is Ownable {
         require(roundIds.length <= 50, "Too many rounds to update at once");
         
         for (uint256 i = 0; i < roundIds.length; i++) {
-            // This would call the core contract's setRoundActive function
-            // For demonstration purposes, we'll emit an event
+            uint256 roundId = roundIds[i];
+            bool activeState = activeStates[i];
+            
+            // Call the core contract's function to set round active status
+            // This would modify the core contract's state
+            FundRaisingCore(coreContract).setRoundActive(roundId, activeState);
         }
     }
     
