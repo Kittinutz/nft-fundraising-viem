@@ -1,0 +1,430 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./DZNFT.sol";
+import "./interfaces/IFundRaisingStorage.sol";
+
+/**
+ * @title FundRaisingCore
+ * @dev Core functionality for investment rounds and NFT minting
+ */
+contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
+    DZNFT public immutable dzNFT;
+    IERC20 public usdtToken;
+    
+    // Use explicit enum instead of interface
+    enum Status { OPEN, CLOSED, COMPLETED, WITHDRAW_FUND, DIVIDEND_PAID }
+    
+    // Use explicit struct instead of interface
+    struct InvestmentRound {
+        uint256 roundId;
+        string roundName;
+        uint256 tokenPrice;
+        uint256 rewardPercentage;
+        uint256 totalTokenOpenInvestment;
+        uint256 tokensSold;
+        uint256 closeDateInvestment;
+        uint256 endDateInvestment;
+        bool isActive;
+        bool exists;
+        uint256 createdAt;
+        Status status;
+    }
+    
+    // Constants
+    uint256 public constant USDT_DECIMALS = 18;
+    uint256 public constant MAX_TOKENS_PER_INVESTMENT = 50;
+    uint256 public constant MAX_BATCH_CLAIM = 50;
+    
+    // Storage
+    mapping(uint256 => InvestmentRound) public investmentRounds;
+    mapping(uint256 => uint256[]) public roundTokenIds;
+    mapping(address => uint256[]) public userInvestments;
+    mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound;
+    mapping(uint256 => uint256) public roundLedger;
+    mapping(address => uint256[]) public investorRounds;
+    mapping(uint256 => uint256) public roundRewardPool;
+    mapping(address => mapping(uint256 => uint256)) public userClaimedRewards;
+    mapping(address => uint256) public investorDividendsEarned;
+    mapping(uint256 => uint256) public totalAddrewardRound;
+    
+    uint256 public _nextRoundId;
+    uint256 public totalRoundsCreated;
+    uint256 public totalUSDTRaised;
+    
+    // Events
+    event RewardAdded(uint256 indexed roundId, uint256 amount, uint256 totalRewardPool);
+    event RoundStatusChanged(uint256 indexed roundId, bool isActive);
+    event USDTTokenUpdated(address indexed oldToken, address indexed newToken);
+    event InvestmentRoundCreated(uint256 indexed roundId, string roundName, uint256 tokenPrice);
+    event Investment(address indexed investor, uint256 indexed roundId, uint256 tokenCount, uint256 usdtAmount);
+    event RewardClaimed(address indexed investor, uint256 indexed roundId, uint256 rewardAmount);
+    
+    // Modifiers
+    modifier roundExists(uint256 roundId) {
+        require(investmentRounds[roundId].exists, "Round does not exist");
+        _;
+    }
+    
+    modifier roundActive(uint256 roundId) {
+        require(investmentRounds[roundId].isActive, "Round is not active");
+        _;
+    }
+    
+    modifier investmentOpen(uint256 roundId) {
+        require(
+            block.timestamp <= investmentRounds[roundId].closeDateInvestment,
+            "Investment period has closed"
+        );
+        _;
+    }
+    
+    constructor(address _dzNFT, address _usdtToken) Ownable(msg.sender) {
+        require(_dzNFT != address(0), "Invalid DZNFT address");
+        require(_usdtToken != address(0), "Invalid USDT address");
+        
+        dzNFT = DZNFT(_dzNFT);
+        usdtToken = IERC20(_usdtToken);
+    }
+    
+    /**
+     * @dev Create a new investment round
+     */
+    function createInvestmentRound(
+        string memory roundName,
+        uint256 tokenPrice,
+        uint256 rewardPercentage,
+        uint256 totalTokenOpenInvestment,
+        uint256 closeDateInvestment,
+        uint256 endDateInvestment
+    ) external onlyOwner returns (uint256) {
+        require(bytes(roundName).length > 0, "Round name cannot be empty");
+        require(tokenPrice > 0, "Price must be greater than 0");
+        require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage (0-10000)");
+        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
+        require(closeDateInvestment > block.timestamp, "Close date must be in future");
+        require(endDateInvestment > closeDateInvestment, "End date must be after close date");
+        
+        uint256 roundId = _nextRoundId++;
+        investmentRounds[roundId] = InvestmentRound({
+            roundId: roundId,
+            roundName: roundName,
+            tokenPrice: tokenPrice * 10 ** USDT_DECIMALS,
+            rewardPercentage: rewardPercentage,
+            totalTokenOpenInvestment: totalTokenOpenInvestment,
+            tokensSold: 0,
+            closeDateInvestment: closeDateInvestment,
+            endDateInvestment: endDateInvestment,
+            isActive: true,
+            exists: true,
+            createdAt: block.timestamp,
+            status: Status.OPEN
+        });
+        
+        totalRoundsCreated++;
+        return roundId;
+    }
+    
+    /**
+     * @dev Invest in a specific round with token amount
+     */
+    function investInRound(uint256 roundId, uint256 tokenAmount) 
+        external 
+        nonReentrant 
+        whenNotPaused 
+        roundExists(roundId) 
+        roundActive(roundId) 
+        investmentOpen(roundId) 
+        returns (uint256) 
+    {
+        require(tokenAmount > 0, "Token amount must be greater than 0");
+        require(tokenAmount <= MAX_TOKENS_PER_INVESTMENT, "Token amount exceeds maximum allowed per transaction");
+        
+        InvestmentRound storage round = investmentRounds[roundId];
+        uint256 usdtAmount = (tokenAmount * round.tokenPrice);
+        
+        require(
+            round.tokensSold + tokenAmount <= round.totalTokenOpenInvestment,
+            "Not enough tokens available in this round"
+        );
+        
+        require(
+            usdtToken.transferFrom(msg.sender, address(this), usdtAmount),
+            "USDT transfer failed"
+        );
+        
+        // Mint NFTs
+        uint256[] memory tokenIds;
+        if (tokenAmount > 1) {
+            tokenIds = dzNFT.batchMintNFT(
+                msg.sender,
+                tokenAmount,
+                roundId,
+                round.tokenPrice,
+                round.rewardPercentage,
+                1,
+                round.closeDateInvestment,
+                round.endDateInvestment
+            );
+        } else {
+            tokenIds = new uint256[](1);
+            tokenIds[0] = dzNFT.mintNFT(
+                msg.sender,
+                roundId,
+                round.tokenPrice,
+                round.rewardPercentage,
+                1,
+                round.closeDateInvestment,
+                round.endDateInvestment
+            );
+        }
+        
+        // Update storage
+        uint256[] storage roundTokens = roundTokenIds[roundId];
+        uint256[] storage userTokens = userInvestments[msg.sender];
+        uint256[] storage userRoundTokens = userNFTsInRound[roundId][msg.sender];
+        
+        bool isFirstInvestmentInRound = userRoundTokens.length == 0;
+        
+        for(uint256 i = 0; i < tokenAmount; i++){
+            roundTokens.push(tokenIds[i]);
+            userTokens.push(tokenIds[i]);
+            userRoundTokens.push(tokenIds[i]);
+        }
+        
+        if (isFirstInvestmentInRound) {
+            investorRounds[msg.sender].push(roundId);
+        }
+        
+        round.tokensSold += tokenAmount;
+        totalUSDTRaised += usdtAmount;
+        roundLedger[roundId] += usdtAmount;
+        
+        return tokenIds[0];
+    }
+    
+    /**
+     * @dev Claim rewards for all user's NFTs in a specific round
+     */
+    function claimRewardRound(uint256 roundId) 
+        external 
+        nonReentrant 
+        whenNotPaused 
+        roundExists(roundId) 
+    {
+        uint256[] memory userTokenIds = dzNFT.getUserNFTsByRound(msg.sender, roundId);
+        require(userTokenIds.length > 0, "No NFTs in this round");
+        require(userTokenIds.length <= MAX_BATCH_CLAIM, "Too many NFTs to claim at once");
+        
+        (uint256 totalPayout, uint256 processedCount) = _calculateRoundPayout(userTokenIds);
+        require(processedCount > 0, "No eligible NFTs to claim");
+        require(totalPayout > 0, "No amount to claim");
+        
+        require(
+            usdtToken.balanceOf(address(this)) >= totalPayout,
+            "Insufficient contract USDT balance"
+        );
+        require(
+            roundRewardPool[roundId] >= totalPayout,
+            "Insufficient round USDT balance"
+        );
+        
+        _processRoundClaims(userTokenIds);
+        
+        investorDividendsEarned[msg.sender] += totalPayout;
+        roundRewardPool[roundId] -= totalPayout;
+        roundLedger[roundId] -= totalPayout;
+        
+        require(
+            usdtToken.transfer(msg.sender, totalPayout),
+            "USDT transfer failed"
+        );
+    }
+    
+    /**
+     * @dev Add rewards to a specific round
+     */
+    function addRewardToRound(uint256 roundId, uint256 amount) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        require(amount > 0, "Reward amount must be greater than 0");
+        require(
+            usdtToken.transferFrom(msg.sender, address(this), amount * 10 ** USDT_DECIMALS),
+            "USDT transfer failed"
+        );
+        
+        roundRewardPool[roundId] += amount * 10 ** USDT_DECIMALS;
+        roundLedger[roundId] += amount * 10 ** USDT_DECIMALS;
+        
+        uint256 totalNFTsInRound = roundTokenIds[roundId].length;
+        require(totalNFTsInRound > 0, "No NFTs in this round");
+        totalAddrewardRound[roundId] += amount * 10 ** USDT_DECIMALS;
+        
+        emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
+    }
+    
+    /**
+     * @dev Withdraw fund from a specific round
+     */
+    function withdrawFund(uint256 roundId) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        uint256 amount = roundLedger[roundId];
+        roundLedger[roundId] = 0;
+        
+        require(
+            usdtToken.transfer(owner(), amount),
+            "USDT transfer failed"
+        );
+        investmentRounds[roundId].status = Status.WITHDRAW_FUND;
+    }
+    
+    /**
+     * @dev Set round active status
+     */
+    function setRoundActive(uint256 roundId, bool active) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        investmentRounds[roundId].isActive = active;
+        emit RoundStatusChanged(roundId, active);
+    }
+    
+    /**
+     * @dev Update USDT token address
+     */
+    function setUSDTToken(address newUSDTToken) external onlyOwner {
+        require(newUSDTToken != address(0), "Invalid USDT token address");
+        require(newUSDTToken != address(usdtToken), "Same USDT token address");
+        
+        address oldToken = address(usdtToken);
+        usdtToken = IERC20(newUSDTToken);
+        
+        emit USDTTokenUpdated(oldToken, newUSDTToken);
+    }
+    
+    /**
+     * @dev Pause contract
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+    
+    /**
+     * @dev Unpause contract
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+    
+    // Internal functions
+    function _calculateRoundPayout(uint256[] memory tokenIds) 
+        internal 
+        view 
+        returns (uint256 totalPayout, uint256 processedCount) 
+    {
+        address sender = msg.sender;
+        uint256 currentTime = block.timestamp;
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
+            
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
+            if (investment.redeemed) continue;
+            
+            uint256 closeDateInvestment = investment.closeDateInvestment;
+            if (currentTime <= closeDateInvestment) continue;
+            
+            uint256 timeSinceCloseDateInvestment = currentTime - closeDateInvestment;
+            if (timeSinceCloseDateInvestment < (180 days)) continue;
+            
+            uint256 principal = (investment.totalTokenOpenInvestment * investment.tokenPrice);
+            uint256 fullRewardAmount = (principal * investment.rewardPercentage) / 100;
+            
+            if (timeSinceCloseDateInvestment >= (365 days)) {
+                if (investment.rewardClaimed) {
+                    totalPayout += principal + (fullRewardAmount / 2);
+                } else {
+                    totalPayout += principal + fullRewardAmount;
+                }
+            } else if (timeSinceCloseDateInvestment >= (180 days) && !investment.rewardClaimed) {
+                totalPayout += (fullRewardAmount / 2);
+            }
+            
+            processedCount++;
+        }
+    }
+    
+    function _processRoundClaims(uint256[] memory tokenIds) internal {
+        address sender = msg.sender;
+        uint256 currentTime = block.timestamp;
+        
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            if (dzNFT.ownerOf(tokenIds[i]) != sender) continue;
+            
+            DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenIds[i]);
+            if (investment.redeemed) continue;
+            
+            uint256 closeDateInvestment = investment.closeDateInvestment;
+            if (currentTime <= closeDateInvestment) continue;
+            
+            uint256 timeSinceCloseDateInvestment = currentTime - closeDateInvestment;
+            if (timeSinceCloseDateInvestment < 180 days) continue;
+            
+            if (timeSinceCloseDateInvestment >= 365 days) {
+                dzNFT.markAsRedeemed(tokenIds[i]);
+                dzNFT.unlockTransfer(tokenIds[i]);
+            } else if (timeSinceCloseDateInvestment >= 180 days && !investment.rewardClaimed) {
+                dzNFT.markRewardClaimed(tokenIds[i]);
+            }
+        }
+    }
+    
+    // Basic view functions
+    function getUSDTTokenAddress() external view returns (address) {
+        return address(usdtToken);
+    }
+    
+    function getContractUSDTBalance() external view returns (uint256) {
+        return usdtToken.balanceOf(address(this));
+    }
+    
+    function getRoundUSDTBalance(uint256 roundId) 
+        external 
+        view 
+        roundExists(roundId) 
+        returns (uint256) 
+    {
+        return roundLedger[roundId];
+    }
+    
+    // Getter functions for arrays
+    function getRoundTokenIds(uint256 roundId) external view returns (uint256[] memory) {
+        return roundTokenIds[roundId];
+    }
+    
+    function getRoundTokenCount(uint256 roundId) external view returns (uint256) {
+        return roundTokenIds[roundId].length;
+    }
+    
+    function getUserInvestments(address user) external view returns (uint256[] memory) {
+        return userInvestments[user];
+    }
+    
+    function getUserNFTsInRound(uint256 roundId, address user) external view returns (uint256[] memory) {
+        return userNFTsInRound[roundId][user];
+    }
+    
+    function getInvestorRounds(address investor) external view returns (uint256[] memory) {
+        return investorRounds[investor];
+    }
+}
