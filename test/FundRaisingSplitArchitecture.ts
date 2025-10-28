@@ -323,8 +323,10 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     assert(ownerBalance1 == 1000, `Expected ~1000, got ${ownerBalance1}`);
 
     await fundRaisingCore.write.withdrawFund([0n]);
+
     const ownerUsdt = await usdt.read.balanceOf([wallet1.account.address]);
     const ownerBalance = Number(formatEther(ownerUsdt));
+
     assert(
       ownerBalance == 2000,
       `Expected ~2000, after withdrawfund got ${ownerBalance}`
@@ -348,33 +350,46 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
     assert.equal(formatEther(fundContractBalance), "30");
 
-    // Fast forward time 7 months
+    // Fast forward time 7 months (210+ days after closeDate for 180+ day phase)
     await networkHelpers.mine();
     await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
     await networkHelpers.mine();
 
-    // Get token IDs for claiming
-    const tokenIds = await fundRaisingAnalytics.read.getUserNFTsInRound([
-      0n,
-      wallet2.account.address,
-    ]);
-    console.log({
-      tokenIds,
-    });
-
-    // Claim through Claims contract
-    await claimsContractW2.write.claimRewardRound([0n, tokenIds]);
+    // Claim reward (Phase 1: 50% reward)
+    // Reward: 2 tokens * 500 USDT * 6% = 60 USDT, 50% = 30 USDT
+    await claimsContractW2.write.claimRewardRound([0n]);
 
     const afterClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
-    console.log({
-      afterClaimW2Balance,
-    });
-    // Note: Exact amount may vary based on claim calculation logic
+
+    // Phase 1: Should receive 30 USDT (50% of reward)
     assert(
-      Number(formatEther(afterClaimW2Balance)) == 30,
-      "Should receive some reward"
+      Number(formatEther(afterClaimW2Balance)) === 30,
+      `Should receive 30 USDT reward at 180 days, got ${formatEther(
+        afterClaimW2Balance
+      )}`
+    );
+    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
+    await usdt.write.approve([fundRaisingCore.address, 1030n * 10n ** 18n]);
+    await fundRaisingCore.write.addRewardToRound([0n, 1030n]);
+    await networkHelpers.mine();
+    await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
+    await networkHelpers.mine();
+    // Claim reward (Phase 1: 50% reward)
+    // Reward: 2 tokens * 500 USDT * 6% = 60 USDT, 50% = 30 USDT
+    await claimsContractW2.write.claimRewardRound([0n]);
+
+    const afterClaimW2Balance2 = await usdt.read.balanceOf([
+      wallet2.account.address,
+    ]);
+
+    // Phase 1: Should receive 30 USDT (50% of reward)
+    assert(
+      Number(formatEther(afterClaimW2Balance2)) === 1060,
+      `Should receive 30 USDT reward at 180 days, got ${formatEther(
+        afterClaimW2Balance2
+      )}`
     );
   });
 
@@ -407,7 +422,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     await fundRaisingCore.write.createInvestmentRound([
       "Round 1",
-      500n,
+      500n * 10n ** 18n, // 500 USDT per token in wei
       6n,
       1000n,
       BigInt(currentTime + 30 * 24 * 60 * 60),
@@ -422,23 +437,28 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await usdt.write.approve([fundRaisingCore.address, 1060n * 10n ** 18n]);
     await fundRaisingCore.write.addRewardToRound([0n, 1060n]);
 
-    // Fast forward time 14 months
+    // Fast forward time 14 months (420+ days after closeDate for 365+ day phase)
     await networkHelpers.mine();
     await networkHelpers.time.increase(60 * 60 * 24 * 30 * 14);
     await networkHelpers.mine();
 
-    const tokenIds = await fundRaisingAnalytics.read.getUserNFTsInRound([
-      0n,
-      wallet2.account.address,
-    ]);
-    await claimsContractW2.write.claimRewardRound([0n, tokenIds]);
+    // Claim reward (Phase 2: Full redemption with 50% remaining reward + principal)
+    // First claim already done in previous test, so this gets: 30 (remaining 50% reward) + 1000 (principal) = 1030 USDT
+    // But since this is a fresh round in this test, it gets full: 60 (full reward) + 1000 (principal) = 1060 USDT
+    await claimsContractW2.write.claimRewardRound([0n]);
 
     const afterClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
+    console.log({
+      afterClaimW2Balance: formatEther(afterClaimW2Balance),
+    });
+    // Phase 2: Should receive full reward (60 USDT) + principal (1000 USDT) = 1060 USDT
     assert(
-      afterClaimW2Balance > 0n,
-      "Should receive full reward after 12+ months"
+      Number(formatEther(afterClaimW2Balance)) === 1060,
+      `Should receive 1060 USDT (60 reward + 1000 principal) at 365 days, got ${formatEther(
+        afterClaimW2Balance
+      )}`
     );
   });
 
@@ -749,7 +769,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Wallet3 claims reward
     const beforeClaim = await usdt.read.balanceOf([wallet3.account.address]);
-    await claimsContractW3.write.claimRewardRound([0n, tokenIds]);
+    await claimsContractW3.write.claimRewardRound([0n]);
     const afterClaim = await usdt.read.balanceOf([wallet3.account.address]);
 
     assert(afterClaim > beforeClaim, "Wallet3 should receive rewards");

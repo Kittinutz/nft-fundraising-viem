@@ -302,7 +302,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Transfer rewards from core contract to claims contract
+     * @dev Transfer rewards from core contract to claimant via claims contract
      * @param roundId The round ID
      * @param claimant The address claiming rewards
      * @param amount The amount to transfer
@@ -315,7 +315,11 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         // Deduct from round reward pool
         roundRewardPool[roundId] -= amount;
         
-        // Transfer to claims contract
-        require(usdtToken.transfer(msg.sender, amount), "Transfer to claims contract failed");
+        // Approve claims contract to transfer on behalf of core
+        // This allows the claims contract to call transferFrom
+        require(
+            usdtToken.approve(msg.sender, amount),
+            "Approve failed"
+        );
     }
 }
