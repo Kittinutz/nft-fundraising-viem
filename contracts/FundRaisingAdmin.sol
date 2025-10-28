@@ -25,6 +25,7 @@ contract FundRaisingAdmin is Ownable {
      * @dev Emergency withdraw USDT (only owner)
      */
     function emergencyWithdraw(uint256 amount) external onlyOwner {
+        require(amount > 0, "Amount must be greater than 0");
         require(
             coreContract.usdtToken().balanceOf(address(coreContract)) >= amount,
             "Insufficient balance"

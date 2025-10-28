@@ -110,6 +110,11 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Grant executor role to claims contract for marking rewards as claimed
     await nft.write.updateExecutorRole([fundRaisingClaims.address, true]);
+
+    // Set the authorized claims contract address for security
+    await fundRaisingCore.write.setAuthorizedClaimsContract([
+      fundRaisingClaims.address,
+    ]);
   });
 
   // ===== BASIC SETUP TESTS =====

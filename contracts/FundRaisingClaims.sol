@@ -108,6 +108,12 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
+            
+            // Check for duplicates - prevent double-claiming if same token ID appears twice
+            for (uint256 j = i + 1; j < tokenIds.length; j++) {
+                require(tokenIds[j] != tokenId, "Duplicate token ID in claim array");
+            }
+            
             // Check ownership
             if (dzNFT.ownerOf(tokenId) != sender) continue;
             
@@ -158,9 +164,16 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
     function _processRoundClaims(uint256[] memory tokenIds) internal {
         address sender = msg.sender;
         uint256 currentTime = block.timestamp;
+        require(tokenIds.length > 0, "Token IDs array cannot be empty");
         
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
+            require(tokenId > 0, "Invalid token ID");
+            
+            // Check for duplicates - prevent double processing if same token ID appears twice
+            for (uint256 j = i + 1; j < tokenIds.length; j++) {
+                require(tokenIds[j] != tokenId, "Duplicate token ID in process array");
+            }
             
             // Check ownership
             if (dzNFT.ownerOf(tokenId) != sender) continue;

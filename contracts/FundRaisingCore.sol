@@ -13,6 +13,7 @@ import "./DZNFT.sol";
 contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     DZNFT public immutable dzNFT;
     IERC20 public usdtToken;
+    address public authorizedClaimsContract;
     
     // Use explicit enum instead of interface
     enum Status { OPEN, CLOSED, COMPLETED, WITHDRAW_FUND, DIVIDEND_PAID }
@@ -57,8 +58,14 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     event RewardAdded(uint256 indexed roundId, uint256 amount, uint256 totalRewardPool);
     event RoundStatusChanged(uint256 indexed roundId, bool isActive);
     event USDTTokenUpdated(address indexed oldToken, address indexed newToken);
+    event AuthorizedClaimsContractUpdated(address indexed oldContract, address indexed newContract);
     
     // Modifiers
+    modifier onlyAuthorizedClaimsContract() {
+        require(msg.sender == authorizedClaimsContract, "Only authorized claims contract can call this");
+        _;
+    }
+    
     modifier roundExists(uint256 roundId) {
         require(investmentRounds[roundId].exists, "Round does not exist");
         _;
@@ -263,12 +270,15 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Update user claimed rewards (called by claims contract)
+     * @dev Update user claimed rewards (called by claims contract only)
      */
     function updateUserClaimedRewards(address user, uint256 roundId, uint256 amount) 
         external 
+        onlyOwner
     {
-        // Only allow claims contract to call this
+        require(user != address(0), "Invalid user address");
+        require(investmentRounds[roundId].exists, "Round does not exist");
+        require(amount > 0, "Amount must be greater than 0");
         userClaimedRewards[user][roundId] += amount;
     }
     
@@ -303,12 +313,16 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     
     /**
      * @dev Transfer rewards from core contract to claimant via claims contract
+     * Only the authorized claims contract can call this function
      * @param roundId The round ID
      * @param amount The amount to transfer
      */
-    function transferRewardToClaims(uint256 roundId, uint256 amount) external {
-        require(msg.sender != address(0), "Invalid sender");
+    function transferRewardToClaims(uint256 roundId, uint256 amount) 
+        external 
+        onlyAuthorizedClaimsContract
+    {
         require(amount > 0, "Invalid amount");
+        require(investmentRounds[roundId].exists, "Round does not exist");
         require(roundRewardPool[roundId] >= amount, "Insufficient reward pool");
         
         // Deduct from round reward pool
@@ -320,5 +334,15 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
             usdtToken.approve(msg.sender, amount),
             "Approve failed"
         );
+    }
+    
+    /**
+     * @dev Set the authorized claims contract address (only owner)
+     */
+    function setAuthorizedClaimsContract(address _claimsContract) external onlyOwner {
+        require(_claimsContract != address(0), "Invalid claims contract address");
+        address oldContract = authorizedClaimsContract;
+        authorizedClaimsContract = _claimsContract;
+        emit AuthorizedClaimsContractUpdated(oldContract, _claimsContract);
     }
 }
