@@ -56,7 +56,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
     uint256 public _nextRoundId;
     uint256 public totalRoundsCreated;
     uint256 public totalUSDTRaised;
-   
+    mapping(uint256 => uint256) public totalAddrewardRound;
     
     
     event RoundStatusChanged(uint256 indexed roundId, bool isActive);
@@ -622,11 +622,11 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         // Calculate reward per NFT for this round
         uint256 totalNFTsInRound = roundTokenIds[roundId].length;
         require(totalNFTsInRound > 0, "No NFTs in this round");
-        
-        
+        totalAddrewardRound[roundId] += amount * 10 ** USDT_DECIMALS;
         emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
     }
 
+  
     /**
      * @dev Check if claim rewards are enabled for a specific round
      * @param roundId The ID of the round to check
