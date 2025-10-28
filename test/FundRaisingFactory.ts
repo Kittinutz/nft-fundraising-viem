@@ -27,27 +27,30 @@ describe("FundRaisingFactory Tests", async function () {
   });
 
   it("Should deploy fund raising suite successfully", async function () {
-    const [coreAddress, analyticsAddress, adminAddress] =
-      await factory.write.deployFundRaising([
-        nftContract.address,
-        usdtContract.address,
-      ]);
+    const result = await factory.write.deployFundRaising([
+      nftContract.address,
+      usdtContract.address,
+    ]);
+
+    // Get the deployed contract addresses by checking deployments
+    const totalDeployments = await factory.read.getTotalDeployments();
+    assert(totalDeployments > 0n, "Should have deployments");
+
+    const deployerDeployments = await factory.read.getDeploymentsByDeployer([
+      owner.account.address,
+    ]);
+    assert(deployerDeployments.length > 0, "Owner should have deployments");
+
+    const coreAddress = deployerDeployments[deployerDeployments.length - 1];
 
     assert(
       coreAddress !== "0x0000000000000000000000000000000000000000",
       "Core address should be valid"
     );
-    assert(
-      analyticsAddress !== "0x0000000000000000000000000000000000000000",
-      "Analytics address should be valid"
-    );
-    assert(
-      adminAddress !== "0x0000000000000000000000000000000000000000",
-      "Admin address should be valid"
-    );
 
     // Verify deployment info
     const deploymentInfo = await factory.read.getDeploymentInfo([coreAddress]);
+
     assert.equal(
       deploymentInfo.deployer.toLowerCase(),
       owner.account.address.toLowerCase()
@@ -57,11 +60,23 @@ describe("FundRaisingFactory Tests", async function () {
       deploymentInfo.coreContract.toLowerCase(),
       coreAddress.toLowerCase()
     );
+
+    // Verify analytics and admin contract addresses are also valid
+    assert(
+      deploymentInfo.analyticsContract !==
+        "0x0000000000000000000000000000000000000000",
+      "Analytics address should be valid"
+    );
+    assert(
+      deploymentInfo.adminContract !==
+        "0x0000000000000000000000000000000000000000",
+      "Admin address should be valid"
+    );
   });
 
   it("Should track deployments correctly", async function () {
     // Deploy first suite
-    const [coreAddress1] = await factory.write.deployFundRaising([
+    await factory.write.deployFundRaising([
       nftContract.address,
       usdtContract.address,
     ]);
@@ -75,7 +90,7 @@ describe("FundRaisingFactory Tests", async function () {
       }
     );
 
-    const [coreAddress2] = await factoryUser1.write.deployFundRaising([
+    await factoryUser1.write.deployFundRaising([
       nftContract.address,
       usdtContract.address,
     ]);
@@ -89,13 +104,21 @@ describe("FundRaisingFactory Tests", async function () {
       owner.account.address,
     ]);
     assert.equal(ownerDeployments.length, 1);
-    assert.equal(ownerDeployments[0].toLowerCase(), coreAddress1.toLowerCase());
 
     const user1Deployments = await factory.read.getDeploymentsByDeployer([
       user1.account.address,
     ]);
     assert.equal(user1Deployments.length, 1);
-    assert.equal(user1Deployments[0].toLowerCase(), coreAddress2.toLowerCase());
+
+    // Verify the deployment addresses are valid
+    assert(
+      ownerDeployments[0] !== "0x0000000000000000000000000000000000000000",
+      "Owner deployment should be valid"
+    );
+    assert(
+      user1Deployments[0] !== "0x0000000000000000000000000000000000000000",
+      "User1 deployment should be valid"
+    );
   });
 
   it("Should provide deployment statistics", async function () {
@@ -136,10 +159,17 @@ describe("FundRaisingFactory Tests", async function () {
   });
 
   it("Should allow owner to manage deployment status", async function () {
-    const [coreAddress] = await factory.write.deployFundRaising([
+    await factory.write.deployFundRaising([
       nftContract.address,
       usdtContract.address,
     ]);
+
+    // Get the deployed contract address
+    const deployerDeployments = await factory.read.getDeploymentsByDeployer([
+      owner.account.address,
+    ]);
+    assert(deployerDeployments.length > 0, "Should have deployments");
+    const coreAddress = deployerDeployments[deployerDeployments.length - 1];
 
     // Initially should be active
     let deploymentInfo = await factory.read.getDeploymentInfo([coreAddress]);
@@ -158,11 +188,21 @@ describe("FundRaisingFactory Tests", async function () {
 
   it("Should integrate with deployed contracts", async function () {
     // Deploy suite
-    const [coreAddress, analyticsAddress, adminAddress] =
-      await factory.write.deployFundRaising([
-        nftContract.address,
-        usdtContract.address,
-      ]);
+    await factory.write.deployFundRaising([
+      nftContract.address,
+      usdtContract.address,
+    ]);
+
+    // Get deployed addresses
+    const deployerDeployments = await factory.read.getDeploymentsByDeployer([
+      owner.account.address,
+    ]);
+    assert(deployerDeployments.length > 0, "Should have deployments");
+    const coreAddress = deployerDeployments[deployerDeployments.length - 1];
+
+    const deploymentInfo = await factory.read.getDeploymentInfo([coreAddress]);
+    const analyticsAddress = deploymentInfo.analyticsContract;
+    const adminAddress = deploymentInfo.adminContract;
 
     // Grant executor role to core contract
     await nftContract.write.updateExecutorRole([coreAddress, true]);
@@ -181,10 +221,10 @@ describe("FundRaisingFactory Tests", async function () {
       adminAddress
     );
 
-    // Test core functionality
+    // Test core functionality with proper token price (in wei)
     await coreContract.write.createInvestmentRound([
       "Factory Test Round",
-      500n,
+      500n * 10n ** 18n, // 500 USDT per token in wei
       6n,
       1000n,
       BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),

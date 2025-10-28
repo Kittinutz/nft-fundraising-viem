@@ -55,6 +55,9 @@ contract FundRaisingFactory is Ownable {
         FundRaisingCore core = new FundRaisingCore(dzNFT, usdtToken);
         coreContract = address(core);
         
+        // Transfer ownership to the deployer
+        core.transferOwnership(msg.sender);
+        
         // Deploy analytics contract
         FundRaisingAnalytics analytics = new FundRaisingAnalytics(coreContract);
         analyticsContract = address(analytics);

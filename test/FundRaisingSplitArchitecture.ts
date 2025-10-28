@@ -305,7 +305,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     // Handle very small precision errors - balance should be close to zero but may have tiny dust amounts
     const balanceEther = Number(formatEther(balanceOfW2));
     assert(
-      balanceEther < 1000.1,
+      balanceEther === 0,
       `Balance should be near zero, got ${balanceEther}`
     );
 
@@ -318,12 +318,16 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     assert.equal(nftBalance, 2n);
 
     // Owner withdraws fund
+    const ownerUsdt1 = await usdt.read.balanceOf([wallet1.account.address]);
+    const ownerBalance1 = Number(formatEther(ownerUsdt1));
+    assert(ownerBalance1 == 1000, `Expected ~1000, got ${ownerBalance1}`);
+
     await fundRaisingCore.write.withdrawFund([0n]);
     const ownerUsdt = await usdt.read.balanceOf([wallet1.account.address]);
     const ownerBalance = Number(formatEther(ownerUsdt));
     assert(
-      Math.abs(ownerBalance - 2000) < 1,
-      `Expected ~2000, got ${ownerBalance}`
+      ownerBalance == 2000,
+      `Expected ~2000, after withdrawfund got ${ownerBalance}`
     );
 
     // Add rewards for claiming
@@ -331,7 +335,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       wallet2.account.address,
     ]);
     assert(
-      Number(formatEther(beforeClaimW2Balance)) < 1,
+      Number(formatEther(beforeClaimW2Balance)) === 0,
       "Balance should be near zero"
     );
 
@@ -354,6 +358,9 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       0n,
       wallet2.account.address,
     ]);
+    console.log({
+      tokenIds,
+    });
 
     // Claim through Claims contract
     await claimsContractW2.write.claimRewardRound([0n, tokenIds]);
@@ -361,8 +368,14 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     const afterClaimW2Balance = await usdt.read.balanceOf([
       wallet2.account.address,
     ]);
+    console.log({
+      afterClaimW2Balance,
+    });
     // Note: Exact amount may vary based on claim calculation logic
-    assert(afterClaimW2Balance > 0n, "Should receive some reward");
+    assert(
+      Number(formatEther(afterClaimW2Balance)) == 30,
+      "Should receive some reward"
+    );
   });
 
   it("Owner withdraw fund and investor Redeem as 12 month be success", async function () {
