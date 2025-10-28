@@ -31,7 +31,7 @@ contract FundRaisingAdmin is Ownable {
             "Insufficient balance"
         );
         require(
-            coreContract.usdtToken().transferFrom(address(coreContract), owner(), amount),
+            coreContract.emergencyTransferUSDT(owner(), amount),
             "USDT transfer failed"
         );
         
@@ -55,8 +55,40 @@ contract FundRaisingAdmin is Ownable {
             "Insufficient contract balance"
         );
         
-        // Note: This would need to be implemented in core contract
-        // For now, this is a placeholder for the interface
+        // Transfer USDT from core contract to owner
+        require(
+            coreContract.emergencyTransferUSDT(owner(), amount),
+            "USDT transfer failed"
+        );
+        
+        // Update core contract's round ledger
+        coreContract.updateRoundLedger(roundId, amount, false);
+        
+        emit EmergencyRoundWithdrawal(roundId, amount, owner());
+    }
+    
+    /**
+     * @dev Emergency withdraw ALL USDT from specific round (only owner)
+     */
+    function emergencyWithdrawAllFromRound(uint256 roundId) 
+        external 
+        onlyOwner 
+    {
+        uint256 amount = coreContract.roundLedger(roundId);
+        require(amount > 0, "No balance to withdraw from this round");
+        require(
+            coreContract.usdtToken().balanceOf(address(coreContract)) >= amount,
+            "Insufficient contract balance"
+        );
+        
+        // Transfer all USDT from core contract to owner
+        require(
+            coreContract.emergencyTransferUSDT(owner(), amount),
+            "USDT transfer failed"
+        );
+        
+        // Update core contract's round ledger to zero
+        coreContract.updateRoundLedger(roundId, amount, false);
         
         emit EmergencyRoundWithdrawal(roundId, amount, owner());
     }

@@ -168,7 +168,6 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
         
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
-            require(tokenId > 0, "Invalid token ID");
             
             // Check for duplicates - prevent double processing if same token ID appears twice
             for (uint256 j = i + 1; j < tokenIds.length; j++) {

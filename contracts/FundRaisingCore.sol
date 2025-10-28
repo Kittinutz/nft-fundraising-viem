@@ -282,6 +282,46 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         userClaimedRewards[user][roundId] += amount;
     }
     
+    /**
+     * @dev Update round ledger balance (only admin contract can call)
+     * @param roundId The round ID
+     * @param amount The amount to adjust
+     * @param increase True to increase balance, false to decrease
+     */
+    function updateRoundLedger(uint256 roundId, uint256 amount, bool increase) 
+        external 
+        onlyOwner
+    {
+        require(investmentRounds[roundId].exists, "Round does not exist");
+        require(amount > 0, "Amount must be greater than 0");
+        
+        if (increase) {
+            roundLedger[roundId] += amount;
+        } else {
+            require(roundLedger[roundId] >= amount, "Insufficient round ledger balance");
+            roundLedger[roundId] -= amount;
+        }
+    }
+
+    /**
+     * @dev Emergency transfer USDT to recipient (only owner)
+     * @param recipient The recipient address
+     * @param amount The amount to transfer
+     */
+    function emergencyTransferUSDT(address recipient, uint256 amount) 
+        external 
+        onlyOwner
+        returns (bool)
+    {
+        require(recipient != address(0), "Invalid recipient address");
+        require(amount > 0, "Amount must be greater than 0");
+        require(
+            usdtToken.balanceOf(address(this)) >= amount,
+            "Insufficient USDT balance"
+        );
+        return usdtToken.transfer(recipient, amount);
+    }
+    
     // Getter functions for arrays
     function getRoundTokenIds(uint256 roundId) external view returns (uint256[] memory) {
         return roundTokenIds[roundId];

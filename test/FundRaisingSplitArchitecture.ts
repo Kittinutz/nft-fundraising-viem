@@ -1456,4 +1456,135 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       console.log("✅ Edge cases handled correctly");
     });
   });
+
+  // ===== EMERGENCY WITHDRAWAL TESTS =====
+  describe("Emergency Withdrawal Functions", async function () {
+    it("Should have updateRoundLedger function in core", async function () {
+      const nft = await viem.deployContract("DZNFT", []);
+      const usdt = await viem.deployContract("MockUSDT", [
+        "Mock USDT",
+        "MUSDT",
+        18,
+        1000n * 10n ** 18n,
+      ]);
+      const coreContract = await viem.deployContract("FundRaisingCore", [
+        nft.address,
+        usdt.address,
+      ]);
+
+      // Create a round
+      const currentBlock = await publicClient.getBlock();
+      const currentTime = Number(currentBlock.timestamp);
+
+      await coreContract.write.createInvestmentRound([
+        "Test Round",
+        parseEther("100"),
+        BigInt(1000),
+        BigInt(100),
+        BigInt(currentTime + 86400 * 30),
+        BigInt(currentTime + 86400 * 90),
+      ]);
+
+      // Test updateRoundLedger exists by calling it
+      await coreContract.write.updateRoundLedger([BigInt(0), parseEther("50"), true]);
+      
+      const ledger = await coreContract.read.roundLedger([BigInt(0)]);
+      assert.equal(ledger, parseEther("50"), "Ledger should be updated to 50");
+
+      console.log("✅ updateRoundLedger function works correctly");
+    });
+
+    it("Should have emergencyTransferUSDT function in core", async function () {
+      const nft = await viem.deployContract("DZNFT", []);
+      const usdt = await viem.deployContract("MockUSDT", [
+        "Mock USDT",
+        "MUSDT",
+        18,
+        1000n * 10n ** 18n,
+      ]);
+      const coreContract = await viem.deployContract("FundRaisingCore", [
+        nft.address,
+        usdt.address,
+      ]);
+
+      // Transfer USDT to core
+      await usdt.write.transfer([coreContract.address, parseEther("100")]);
+      
+      const balanceBefore = await usdt.read.balanceOf([coreContract.address]);
+      assert(balanceBefore > 0n, "Core should have USDT");
+
+      // Call emergencyTransferUSDT
+      const transferResult = await coreContract.write.emergencyTransferUSDT([
+        wallet1.account.address,
+        parseEther("50"),
+      ]);
+      
+      const balanceAfter = await usdt.read.balanceOf([coreContract.address]);
+      assert(balanceAfter < balanceBefore, "Balance should decrease");
+
+      console.log("✅ emergencyTransferUSDT function works correctly");
+    });
+
+    it("Should reject emergency withdrawal with zero amount", async function () {
+      // Deploy minimal contracts
+      const nft = await viem.deployContract("DZNFT", []);
+      const usdt = await viem.deployContract("MockUSDT", [
+        "Mock USDT",
+        "MUSDT",
+        18,
+        1000n * 10n ** 18n,
+      ]);
+      const coreContract = await viem.deployContract("FundRaisingCore", [
+        nft.address,
+        usdt.address,
+      ]);
+      const adminContract = await viem.deployContract("FundRaisingAdmin", [
+        coreContract.address,
+      ]);
+
+      try {
+        await adminContract.write.emergencyWithdraw([0n]);
+        assert.fail("Should have reverted due to zero amount");
+      } catch (error: any) {
+        assert(
+          error.message.includes("Amount must be greater than 0"),
+          "Should fail with zero amount error"
+        );
+      }
+
+      console.log("✅ Emergency withdrawal correctly rejects zero amount");
+    });
+
+    it("Should reject emergency withdrawal by non-owner", async function () {
+      // Deploy minimal contracts
+      const nft = await viem.deployContract("DZNFT", []);
+      const usdt = await viem.deployContract("MockUSDT", [
+        "Mock USDT",
+        "MUSDT",
+        18,
+        1000n * 10n ** 18n,
+      ]);
+      const coreContract = await viem.deployContract("FundRaisingCore", [
+        nft.address,
+        usdt.address,
+      ]);
+      const adminContract = await viem.deployContract("FundRaisingAdmin", [
+        coreContract.address,
+      ]);
+
+      try {
+        await adminContract.write.emergencyWithdraw([parseEther("100")], {
+          account: wallet2.account,
+        });
+        assert.fail("Should have reverted due to non-owner caller");
+      } catch (error: any) {
+        assert(
+          error.message.includes("OwnableUnauthorizedAccount") || error.message.includes("Ownable"),
+          "Should fail with owner authorization error"
+        );
+      }
+
+      console.log("✅ Emergency withdrawal correctly rejects non-owner");
+    });
+  });
 });
