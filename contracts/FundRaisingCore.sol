@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
-
+import "hardhat/console.sol";
 /**
  * @title FundRaisingCore
  * @dev Core functionality for investment rounds and NFT minting (reduced size)
@@ -150,7 +150,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
             usdtToken.transferFrom(msg.sender, address(this), usdtAmount),
             "USDT transfer failed"
         );
-        
+        console.log("USDT Amount Invested:",  round.tokenPrice);
         // Mint NFTs
         uint256[] memory tokenIds;
         if (tokenAmount > 1) {

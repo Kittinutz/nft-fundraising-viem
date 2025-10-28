@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./DZNFT.sol";
 import "./FundRaisingCore.sol";
-
+import "hardhat/console.sol";
 /**
  * @title FundRaisingClaims
  * @dev Handles reward claiming functionality
@@ -62,13 +62,16 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
     {
         // Get user's NFTs for this round automatically
         uint256[] memory userTokenIds = dzNFT.getUserNFTsByRound(msg.sender, roundId);
+        console.log("Total Payout:", msg.sender);
+    
         require(userTokenIds.length > 0, "No NFTs in this round");
         require(userTokenIds.length <= MAX_BATCH_CLAIM, "Too many NFTs to claim at once");
         
         // Calculate total payout
         (uint256 totalPayout, uint256 claimPhase) = _calculateRoundPayout(userTokenIds);
         require(totalPayout > 0, "No amount to claim");
-        
+        console.log("Total Payout:", totalPayout);
+        console.log("Claim Phase:", claimPhase);
         // Verify round has sufficient balance
         uint256 roundRewardPool = coreContract.roundRewardPool(roundId);
         require(roundRewardPool >= totalPayout, "Insufficient round reward pool");
@@ -108,11 +111,13 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
             uint256 tokenId = tokenIds[i];
-            
+            console.log("Processing Token ID:", tokenId);
             // Check ownership
             if (dzNFT.ownerOf(tokenId) != sender) continue;
             
             DZNFT.InvestmentData memory investment = dzNFT.getInvestmentData(tokenId);
+            console.log("investment token price:", investment.tokenPrice);
+            console.log("investment reward percentage:", investment.rewardPercentage);
             
             // Skip if already fully redeemed
             if (investment.redeemed) continue;
