@@ -41,10 +41,8 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     // Storage
     mapping(uint256 => InvestmentRound) public investmentRounds;
     mapping(uint256 => uint256[]) public roundTokenIds;
-    mapping(address => uint256[]) public userInvestments;
     mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound;
     mapping(uint256 => uint256) public roundLedger;
-    mapping(address => uint256[]) public investorRounds;
     mapping(uint256 => uint256) public roundRewardPool;
     mapping(address => mapping(uint256 => uint256)) public userClaimedRewards;
     
@@ -185,21 +183,13 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         
         // Update storage
         uint256[] storage roundTokens = roundTokenIds[roundId];
-        uint256[] storage userTokens = userInvestments[msg.sender];
-        uint256[] storage userRoundTokens = userNFTsInRound[roundId][msg.sender];
         
-        bool isFirstInvestmentInRound = userRoundTokens.length == 0;
         
         for(uint256 i = 0; i < tokenAmount; i++){
             roundTokens.push(tokenIds[i]);
-            userTokens.push(tokenIds[i]);
-            userRoundTokens.push(tokenIds[i]);
         }
         
-        if (isFirstInvestmentInRound) {
-            investorRounds[msg.sender].push(roundId);
-        }
-        
+    
         // Update round data
         round.tokensSold += tokenAmount;
         roundLedger[roundId] += usdtAmount;
@@ -332,7 +322,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     }
     
     function getUserInvestments(address user) external view returns (uint256[] memory) {
-        return userInvestments[user];
+        return dzNFT.getWalletTokenIds(user);
     }
     
     function getUserNFTsInRound(uint256 roundId, address user) external view returns (uint256[] memory) {
@@ -340,7 +330,8 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     }
     
     function getInvestorRounds(address investor) external view returns (uint256[] memory) {
-        return investorRounds[investor];
+
+        return dzNFT.getInvestorRounds(investor);
     }
     
     function getUSDTTokenAddress() external view returns (address) {
