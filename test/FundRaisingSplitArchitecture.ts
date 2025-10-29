@@ -1486,8 +1486,12 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       ]);
 
       // Test updateRoundLedger exists by calling it
-      await coreContract.write.updateRoundLedger([BigInt(0), parseEther("50"), true]);
-      
+      await coreContract.write.updateRoundLedger([
+        BigInt(0),
+        parseEther("50"),
+        true,
+      ]);
+
       const ledger = await coreContract.read.roundLedger([BigInt(0)]);
       assert.equal(ledger, parseEther("50"), "Ledger should be updated to 50");
 
@@ -1509,7 +1513,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
       // Transfer USDT to core
       await usdt.write.transfer([coreContract.address, parseEther("100")]);
-      
+
       const balanceBefore = await usdt.read.balanceOf([coreContract.address]);
       assert(balanceBefore > 0n, "Core should have USDT");
 
@@ -1518,7 +1522,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         wallet1.account.address,
         parseEther("50"),
       ]);
-      
+
       const balanceAfter = await usdt.read.balanceOf([coreContract.address]);
       assert(balanceAfter < balanceBefore, "Balance should decrease");
 
@@ -1579,7 +1583,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         assert.fail("Should have reverted due to non-owner caller");
       } catch (error: any) {
         assert(
-          error.message.includes("OwnableUnauthorizedAccount") || error.message.includes("Ownable"),
+          error.message.includes("OwnableUnauthorizedAccount") ||
+            error.message.includes("Ownable"),
           "Should fail with owner authorization error"
         );
       }

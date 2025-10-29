@@ -1,5 +1,9 @@
 {
-  "FundRaisingContractNFT#DZNFT": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  "FundRaisingContractNFT#MockUSDT": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-  "FundRaisingContractNFT#FundRaisingContractNFT": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+  "FundRaisingSuite#DZNFT": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "FundRaisingSuite#FundRaisingFactory": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "FundRaisingSuite#MockUSDT": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+  "FundRaisingSuite#FundRaisingAdmin": "0xbf9fBFf01664500A33080Da5d437028b07DFcC55",
+  "FundRaisingSuite#FundRaisingAnalytics": "0x9f1ac54BEF0DD2f6f3462EA0fa94fC62300d3a8e",
+  "FundRaisingSuite#FundRaisingCore": "0xCafac3dD18aC6c6e92c921884f9E4176737C052c",
+  "FundRaisingSuite#FundRaisingClaims": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
 }
