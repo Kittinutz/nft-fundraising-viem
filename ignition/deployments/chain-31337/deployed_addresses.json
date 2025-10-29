@@ -1,9 +1,9 @@
 {
-  "FundRaisingSuite#DZNFT": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  "FundRaisingSuite#FundRaisingFactory": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
-  "FundRaisingSuite#MockUSDT": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
-  "FundRaisingSuite#FundRaisingAdmin": "0xbf9fBFf01664500A33080Da5d437028b07DFcC55",
-  "FundRaisingSuite#FundRaisingAnalytics": "0x9f1ac54BEF0DD2f6f3462EA0fa94fC62300d3a8e",
-  "FundRaisingSuite#FundRaisingCore": "0xCafac3dD18aC6c6e92c921884f9E4176737C052c",
-  "FundRaisingSuite#FundRaisingClaims": "0x0165878A594ca255338adfa4d48449f69242Eb8F"
+  "FundRaisingSuite#DZNFT": "0x8A791620dd6260079BF849Dc5567aDC3F2FdC318",
+  "FundRaisingSuite#FundRaisingFactory": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+  "FundRaisingSuite#MockUSDT": "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e",
+  "FundRaisingSuite#FundRaisingAdmin": "0xCBd5431cC04031d089c90E7c83288183A6Fe545d",
+  "FundRaisingSuite#FundRaisingAnalytics": "0xdAD42D43ecE0f6e8da8c2BCbC6A25FF6b3922C58",
+  "FundRaisingSuite#FundRaisingCore": "0x6F1216D1BFe15c98520CA1434FC1d9D57AC95321",
+  "FundRaisingSuite#FundRaisingClaims": "0x0B306BF915C4d645ff596e518fAf3F9669b97016"
 }
