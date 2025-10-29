@@ -1460,23 +1460,11 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
   // ===== EMERGENCY WITHDRAWAL TESTS =====
   describe("Emergency Withdrawal Functions", async function () {
     it("Should have updateRoundLedger function in core", async function () {
-      const nft = await viem.deployContract("DZNFT", []);
-      const usdt = await viem.deployContract("MockUSDT", [
-        "Mock USDT",
-        "MUSDT",
-        18,
-        1000n * 10n ** 18n,
-      ]);
-      const coreContract = await viem.deployContract("FundRaisingCore", [
-        nft.address,
-        usdt.address,
-      ]);
-
       // Create a round
       const currentBlock = await publicClient.getBlock();
       const currentTime = Number(currentBlock.timestamp);
 
-      await coreContract.write.createInvestmentRound([
+      await fundRaisingCore.write.createInvestmentRound([
         "Test Round",
         parseEther("100"),
         BigInt(1000),
@@ -1486,13 +1474,13 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       ]);
 
       // Test updateRoundLedger exists by calling it
-      await coreContract.write.updateRoundLedger([
+      await fundRaisingClaims.write.updateRoundLedger([
         BigInt(0),
         parseEther("50"),
         true,
       ]);
 
-      const ledger = await coreContract.read.roundLedger([BigInt(0)]);
+      const ledger = await fundRaisingCore.read.roundLedger([BigInt(0)]);
       assert.equal(ledger, parseEther("50"), "Ledger should be updated to 50");
 
       console.log("✅ updateRoundLedger function works correctly");

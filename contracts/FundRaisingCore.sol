@@ -280,7 +280,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
      */
     function updateRoundLedger(uint256 roundId, uint256 amount, bool increase) 
         external 
-        onlyOwner
+        onlyAuthorizedClaimsContract
     {
         require(investmentRounds[roundId].exists, "Round does not exist");
         require(amount > 0, "Amount must be greater than 0");

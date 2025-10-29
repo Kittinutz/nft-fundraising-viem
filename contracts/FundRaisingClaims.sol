@@ -88,7 +88,18 @@ contract FundRaisingClaims is Ownable, ReentrancyGuard {
         
         emit RewardClaimed(msg.sender, roundId, totalPayout, claimPhase);
     }
-    
+     /**
+     * @dev Update round ledger balance (only admin contract can call)
+     * @param roundId The round ID
+     * @param amount The amount to adjust
+     * @param increase True to increase balance, false to decrease
+     */
+    function updateRoundLedger(uint256 roundId, uint256 amount, bool increase) 
+        external 
+        onlyOwner
+    {
+        return coreContract.updateRoundLedger(roundId, amount, increase);
+    }
     /**
      * @dev Calculate payout for round claim
      * 
