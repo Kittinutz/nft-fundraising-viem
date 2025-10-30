@@ -135,19 +135,6 @@ contract FundRaisingAnalytics {
         return (totalRounds, activeRounds);
     }
     
-    function getInvestorSummary(address investor) 
-        external 
-        view 
-        returns (
-            uint256 totalTokensOwned,
-            uint256[] memory nftTokenIds,
-            uint256 totalInvestment,
-            uint256 dividendsEarned
-        ) 
-    {
-        return coreContract.getInvestorSummary(investor);
-    }
-    
     /**
      * @dev Check if claim reward is enabled for a round
      */
@@ -226,5 +213,61 @@ contract FundRaisingAnalytics {
         return _getInvestorRounds(investor);
     }
 
+   function _processedDividedEarnings(uint256[] memory tokenIds) internal view returns (uint256 dividendEarned, uint256 dividendPending) {
+        require(tokenIds.length > 0, "No token IDs provided");
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            require(coreContract.getExistsToken(tokenIds[i]), "Token does not exist");
+            DZNFT.InvestmentData memory data = coreContract.getInvestmentData(tokenIds[i]);
+            bool isRewardClaimed = data.rewardClaimed;
+            bool isRewardRedeemed = data.redeemed;
+            
+            if(isRewardRedeemed){
+                dividendEarned += (data.tokenPrice * data.rewardPercentage)/100;
+            } else {
+                if(isRewardClaimed){
+                 dividendEarned += ((data.tokenPrice * data.rewardPercentage)/100)/2;
+                }else {
+                    dividendPending += ((data.tokenPrice * data.rewardPercentage)/100);
+                }
+            }
+
+        }
+        
+        return (dividendEarned, dividendPending);
+    }
+
+    function getDividendEarning(address walletAddress) 
+        external 
+        view 
+        returns (uint256 dividendEarned, uint256 dividendPending) 
+    {
+        require(walletAddress != address(0), "Invalid wallet address");
+        uint256[] memory tokenIds = coreContract.getAllTokensOwnedBy(walletAddress);
+        return _processedDividedEarnings(tokenIds);
+    }
+
+    function getInvestorSummary(address investor) 
+        external 
+        view 
+        returns (
+            uint256 totalTokensOwned,
+            uint256[] memory nftTokenIds,
+            uint256 totalInvestment,
+            uint256 dividendsEarned
+        ) 
+    {
+        require(investor != address(0), "Invalid investor address");
+        uint256[] memory tokenIds = coreContract.getAllTokensOwnedBy(investor);
+        totalTokensOwned = tokenIds.length;
+        nftTokenIds = new uint256[](totalTokensOwned);
+        totalInvestment = 0;
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            DZNFT.InvestmentData memory data = coreContract.getInvestmentData(tokenIds[i]);
+            nftTokenIds[i] = tokenIds[i];
+            totalInvestment += data.tokenPrice * data.totalTokenOpenInvestment;
+        }
+        (dividendsEarned, ) = _processedDividedEarnings(tokenIds);
+        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned);
+    }
   
 }

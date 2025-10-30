@@ -511,22 +511,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         return (dividendEarned, dividendPending);
     }
 
-    /**
-     * @dev Get dividend earnings for all NFTs owned by a wallet
-     * @param walletAddress The address to get dividend earnings for
-     * @return dividendEarned Total dividends already earned
-     * @return dividendPending Total dividends pending
-     */
-    function getDividendEarning(address walletAddress) 
-        external 
-        view 
-        returns (uint256 dividendEarned, uint256 dividendPending) 
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        uint256[] memory tokenIds = _getAllTokensOwnedBy(walletAddress);
-        return _processedDividedEarnings(tokenIds);
-    }
-
 
     function getTokenDetail(uint256 tokenId) 
         external 
@@ -550,33 +534,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         }
 
         return (tokenIds, nftsDetail);
-    }
-
-
-    
-    //move to analytic
-    function getInvestorSummary(address investor) 
-        external 
-        view 
-        returns (
-            uint256 totalTokensOwned,
-            uint256[] memory nftTokenIds,
-            uint256 totalInvestment,
-            uint256 dividendsEarned
-        ) 
-    {
-        require(investor != address(0), "Invalid investor address");
-        uint256[] memory tokenIds = _getAllTokensOwnedBy(investor);
-        totalTokensOwned = tokenIds.length;
-        nftTokenIds = new uint256[](totalTokensOwned);
-        totalInvestment = 0;
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            InvestmentData memory data = investmentData[tokenIds[i]];
-            nftTokenIds[i] = tokenIds[i];
-            totalInvestment += data.tokenPrice * data.totalTokenOpenInvestment;
-        }
-        (dividendsEarned, ) = _processedDividedEarnings(tokenIds);
-        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned);
     }
 
 

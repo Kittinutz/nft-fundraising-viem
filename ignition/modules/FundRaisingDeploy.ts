@@ -16,43 +16,34 @@ export default buildModule("FundRaisingSuite", (m) => {
   const factory = m.contract("FundRaisingFactory");
 
   // Deploy complete fund raising suite using factory
-  const deployTx = m.call(factory, "deployFundRaising", [dzNft, usdt]);
-
+  // const deployTx = m.call(factory, "deployFundRaising", [dzNft, usdt]);
+  const FundRaisingCore = m.contract("FundRaisingCore", [dzNft, usdt]);
   // Extract deployed contract addresses from factory deployment
-  const fundRaisingCore = m.contractAt(
-    "FundRaisingCore",
-    m.readEventArgument(deployTx, "FundRaisingDeployed", "coreContract")
-  );
 
-  const fundRaisingAnalytics = m.contractAt(
-    "FundRaisingAnalytics",
-    m.readEventArgument(deployTx, "FundRaisingDeployed", "analyticsContract")
-  );
-
-  const fundRaisingAdmin = m.contractAt(
-    "FundRaisingAdmin",
-    m.readEventArgument(deployTx, "FundRaisingDeployed", "adminContract")
-  );
+  const FundRaisingAnalytics = m.contract("FundRaisingAnalytics", [
+    FundRaisingCore,
+  ]);
+  const FundRaisingAdmin = m.contract("FundRaisingAdmin", [FundRaisingCore]);
 
   // Deploy FundRaisingClaims contract
-  const fundRaisingClaims = m.contract("FundRaisingClaims", [
-    fundRaisingCore,
+  const FundRaisingClaims = m.contract("FundRaisingClaims", [
+    FundRaisingCore,
     dzNft,
     usdt,
   ]);
 
   // Set authorized claims contract in core
-  m.call(fundRaisingCore, "setAuthorizedClaimsContract", [fundRaisingClaims]);
+  m.call(FundRaisingCore, "setAuthorizedClaimsContract", [FundRaisingClaims]);
 
   // Grant executor roles to deployed contracts
-  m.call(dzNft, "updateExecutorRole", [fundRaisingCore, true]);
+  m.call(dzNft, "updateExecutorRole", [FundRaisingCore, true]);
 
   // Create initial investment rounds
   const currentTime = BigInt(Math.floor(Date.now() / 1000));
   const thirtyDaysLater = currentTime + BigInt(30 * 24 * 60 * 60);
   const oneYearLater = currentTime + BigInt(365 * 24 * 60 * 60);
 
-  m.call(fundRaisingCore, "createInvestmentRound", [
+  m.call(FundRaisingCore, "createInvestmentRound", [
     "Round 1 - Early Birds",
     500n * 10n ** 18n, // 500 USDT per token
     6n, // 6% reward
@@ -62,7 +53,7 @@ export default buildModule("FundRaisingSuite", (m) => {
   ]);
 
   m.call(
-    fundRaisingCore,
+    FundRaisingCore,
     "createInvestmentRound",
     [
       "Round 2 - Public Sale",
@@ -80,9 +71,9 @@ export default buildModule("FundRaisingSuite", (m) => {
     factory,
     dzNft,
     usdt,
-    fundRaisingCore,
-    fundRaisingAnalytics,
-    fundRaisingAdmin,
-    fundRaisingClaims,
+    FundRaisingCore,
+    FundRaisingAnalytics,
+    FundRaisingAdmin,
+    FundRaisingClaims,
   };
 });
