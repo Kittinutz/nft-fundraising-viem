@@ -33,6 +33,22 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         uint256 createdAt;
         Status status;
     }
+
+    struct InvestmentNFTData {
+        uint256 tokenId;
+        uint256 roundId;
+        uint256 tokenPrice;
+        uint256 rewardPercentage;
+        uint256 totalTokenOpenInvestment;
+        uint256 purchaseTimestamp;
+        uint256 closeDateInvestment;
+        uint256 endDateInvestment;
+        address originalBuyer;
+        bool redeemed;
+        bool rewardClaimed; // New: tracks if early reward was claimed
+        bool transferLocked; // New: locks transfer even after redemption
+        string metadata; // Additional metadata stamp
+    }
     
     // Constants
     uint256 public constant USDT_DECIMALS = 18;
@@ -328,12 +344,59 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     function getUserNFTsInRound(uint256 roundId, address user) external view returns (uint256[] memory) {
         return userNFTsInRound[roundId][user];
     }
-    
+    // get investor round investment base on NFT token owner
     function getInvestorRounds(address investor) external view returns (uint256[] memory) {
 
         return dzNFT.getInvestorRounds(investor);
+    } 
+    function getInvestorSummary(address investor) 
+        external 
+        view 
+        returns (
+            uint256 totalTokensOwned,
+            uint256[] memory nftTokenIds,
+            uint256 totalInvestment,
+            uint256 dividendsEarned,
+            uint256[] memory activeRounds
+        ) 
+    {
+        return dzNFT.getInvestorSummary(investor);
     }
-    
+
+    function batchGetTokensDetail(uint256[] memory tokenIds) 
+        external 
+        view 
+        returns (DZNFT.InvestmentData[] memory) 
+    {
+        return dzNFT.batchGetTokensDetail(tokenIds);
+    }
+
+    function getTokenDetail(uint256 tokenId) 
+        external 
+        view 
+        returns (InvestmentNFTData memory) 
+        {
+            // Get the data from DZNFT contract
+            DZNFT.InvestmentData memory nftData = dzNFT.getTokenDetail(tokenId);
+            
+            // Convert to InvestmentNFTData struct
+            return InvestmentNFTData({
+                tokenId: nftData.tokenId,
+                roundId: nftData.roundId,
+                tokenPrice: nftData.tokenPrice,
+                rewardPercentage: nftData.rewardPercentage,
+                totalTokenOpenInvestment: nftData.totalTokenOpenInvestment,
+                purchaseTimestamp: nftData.purchaseTimestamp,
+                closeDateInvestment: nftData.closeDateInvestment,
+                endDateInvestment: nftData.endDateInvestment,
+                originalBuyer: nftData.originalBuyer,
+                redeemed: nftData.redeemed,
+                rewardClaimed: nftData.rewardClaimed,
+                transferLocked: nftData.transferLocked,
+                metadata: nftData.metadata
+            });
+        }
+
     function getUSDTTokenAddress() external view returns (address) {
         return address(usdtToken);
     }

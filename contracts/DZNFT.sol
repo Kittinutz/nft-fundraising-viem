@@ -470,7 +470,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
      * @param tokenIds Array of token IDs to get data for
      * @return investments Array of investment data
      */
-    function batchGetInvestmentData(uint256[] memory tokenIds) 
+    function batchGetTokensDetail(uint256[] memory tokenIds) 
         external 
         view 
         returns (InvestmentData[] memory investments) 
@@ -679,8 +679,8 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         );
     }
     
-    function getInvestorRounds(address walletAddress) 
-        external 
+    function _getInvestorRounds(address walletAddress) 
+        internal 
         view 
         returns (uint256[] memory roundIds) 
     {
@@ -733,6 +733,19 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         
         return roundIds;
     }
+    /**
+     * @dev Get all investment round IDs for a wallet
+     * @param walletAddress The address to get round IDs for
+     * @return roundIds Array of unique round IDs associated with the wallet
+     */
+    function getInvestorRounds(address walletAddress) 
+        external 
+        view 
+        returns (uint256[] memory roundIds) 
+    {
+       return _getInvestorRounds(walletAddress);
+    }
+    
 
     /**
      * @dev Get all token IDs owned by a wallet (convenience function, non-paginated)
@@ -748,7 +761,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         return _getAllTokensOwnedBy(walletAddress);
     }
 
-    function processedDividedEarnings(uint256[] memory tokenIds) internal view returns (uint256 dividendEarned, uint256 dividendPending) {
+    function _processedDividedEarnings(uint256[] memory tokenIds) internal view returns (uint256 dividendEarned, uint256 dividendPending) {
         require(tokenIds.length > 0, "No token IDs provided");
         for (uint256 i = 0; i < tokenIds.length; i++) {
             require(tokenExists[tokenIds[i]], "Token does not exist");
@@ -783,7 +796,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     {
         require(walletAddress != address(0), "Invalid wallet address");
         uint256[] memory tokenIds = _getAllTokensOwnedBy(walletAddress);
-        return processedDividedEarnings(tokenIds);
+        return _processedDividedEarnings(tokenIds);
     }
 
     /**
@@ -791,6 +804,30 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
      * @param walletAddress The address to get token details for
      * @return tokenIds Array of token IDs owned by the address
      */
+    function _getWalletTokensDetail(address walletAddress) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds, InvestmentData[] memory nftsDetail) 
+    {
+        require(walletAddress != address(0), "Invalid wallet address");
+        tokenIds = _getAllTokensOwnedBy(walletAddress);
+        nftsDetail = new InvestmentData[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; i++){
+            nftsDetail[i] = investmentData[tokenIds[i]];
+        }
+
+        return (tokenIds, nftsDetail);
+    }
+
+    function getTokenDetail(uint256 tokenId) 
+        external 
+        view 
+        returns (InvestmentData memory) 
+    {
+        require(tokenExists[tokenId], "Token does not exist");
+        return investmentData[tokenId];
+    }
+
     function getWalletTokensDetail(address walletAddress) 
         external 
         view 
@@ -804,6 +841,34 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         }
 
         return (tokenIds, nftsDetail);
+    }
+
+
+    
+    function getInvestorSummary(address investor) 
+        external 
+        view 
+        returns (
+            uint256 totalTokensOwned,
+            uint256[] memory nftTokenIds,
+            uint256 totalInvestment,
+            uint256 dividendsEarned,
+            uint256[] memory activeRounds
+        ) 
+    {
+        require(investor != address(0), "Invalid investor address");
+        uint256[] memory tokenIds = _getAllTokensOwnedBy(investor);
+        totalTokensOwned = tokenIds.length;
+        nftTokenIds = new uint256[](totalTokensOwned);
+        totalInvestment = 0;
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            InvestmentData memory data = investmentData[tokenIds[i]];
+            nftTokenIds[i] = tokenIds[i];
+            totalInvestment += data.tokenPrice * data.totalTokenOpenInvestment;
+        }
+        (dividendsEarned, ) = _processedDividedEarnings(tokenIds);
+        activeRounds = _getInvestorRounds(investor);
+        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned, activeRounds);
     }
 
     /**

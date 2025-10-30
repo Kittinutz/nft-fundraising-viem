@@ -97,17 +97,7 @@ contract FundRaisingAnalytics {
         return coreContract.getUserInvestments(user);
     }
     
-    /**
-     * @dev Get user's NFTs for a specific round
-     */
-    function getUserNFTsInRound(uint256 roundId, address user) 
-        external 
-        view 
-        returns (uint256[] memory) 
-    {
-        return coreContract.getUserNFTsInRound(roundId, user);
-    }
-    
+ 
     /**
      * @dev Get total count of rounds for pagination calculation
      */
@@ -129,28 +119,18 @@ contract FundRaisingAnalytics {
         return (totalRounds, activeRounds);
     }
     
-    /**
-     * @dev Get investor detail with all their rounds and NFTs
-     */
-    function getInvestorDetail(address investor) 
+    function getInvestorSummary(address investor) 
         external 
         view 
         returns (
-            uint256[] memory roundIds, 
-            InvestmentRound[] memory rounds, 
-            uint256[][] memory nfts
+            uint256 totalTokensOwned,
+            uint256[] memory nftTokenIds,
+            uint256 totalInvestment,
+            uint256 dividendsEarned,
+            uint256[] memory activeRounds
         ) 
     {
-        roundIds = coreContract.getInvestorRounds(investor);
-        rounds = new InvestmentRound[](roundIds.length);
-        nfts = new uint256[][](roundIds.length);
-        
-        for (uint256 i = 0; i < roundIds.length; i++) {
-            (rounds[i],) = this.getInvestmentRound(roundIds[i]);
-            nfts[i] = coreContract.getUserNFTsInRound(roundIds[i], investor);
-        }
-        
-        return (roundIds, rounds, nfts);
+        return coreContract.getInvestorSummary(investor);
     }
     
     /**

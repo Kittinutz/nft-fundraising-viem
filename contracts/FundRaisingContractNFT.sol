@@ -444,17 +444,7 @@ contract FundRaisingContractNFT is Ownable, ReentrancyGuard, Pausable {
         return userInvestments[user];
     }
     
-    /**
-     * @dev Get user's NFTs for a specific round
-     */
-    function getUserNFTsInRound(uint256 roundId, address user) 
-        external 
-        view 
-        roundExists(roundId) 
-        returns (uint256[] memory) 
-    {
-        return userNFTsInRound[roundId][user];
-    }
+ 
     
    
     /**

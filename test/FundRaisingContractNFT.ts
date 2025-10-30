@@ -328,7 +328,7 @@ describe("FundRaisingContractNFT", async function () {
     //test getInvestorDetail
     assert.equal(info[3], 1060n * 10n ** 18n); //dividend claimed
     assert.equal(info[2], 1000n * 10n ** 18n); // total invest
-    assert.equal(info[0], 2n);
+    assert.equal(info[0], 2n); //token contract
     assert.deepEqual(info[1], [0n, 1n]); // token ids
     // invest time 2nd round
     const block2 = await publicClient.getBlock();

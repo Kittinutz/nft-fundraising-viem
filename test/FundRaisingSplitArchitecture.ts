@@ -1135,11 +1135,12 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     const tokenIds = await fundRaisingAnalytics.read.getRoundTokenIds([0n]);
     assert.equal(tokenIds.length, 2);
 
-    const [roundIds, rounds, nfts] =
-      await fundRaisingAnalytics.read.getInvestorDetail([
+    const [tokenOwned, rounds, nfts] =
+      await fundRaisingAnalytics.read.getInvestorSummary([
         wallet2.account.address,
       ]);
-    assert.equal(roundIds.length, 1);
+    console.log("---->tokenOwned:", tokenOwned);
+    assert.equal(tokenOwned, 2n);
 
     // 4. Check stats via Admin
     const [totalRounds, totalRaised] =
