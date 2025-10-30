@@ -521,20 +521,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         return investmentData[tokenId];
     }
 
-    function getWalletTokensDetail(address walletAddress) 
-        external 
-        view 
-        returns (uint256[] memory tokenIds, InvestmentData[] memory nftsDetail) 
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        tokenIds = _getAllTokensOwnedBy(walletAddress);
-        nftsDetail = new InvestmentData[](tokenIds.length);
-        for(uint256 i = 0; i < tokenIds.length; i++){
-            nftsDetail[i] = investmentData[tokenIds[i]];
-        }
-
-        return (tokenIds, nftsDetail);
-    }
 
 
     function _getAllTokensOwnedBy(address owner) 
