@@ -249,7 +249,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         InvestmentData memory data = investmentData[tokenId];
         
         // Can claim if 6 months have passed since purchase and reward not yet claimed
-        return (block.timestamp >= data.purchaseTimestamp + 180 days) && 
+        return (block.timestamp >= data.closeDateInvestment + 180 days) && 
                !data.rewardClaimed && 
                !data.redeemed;
     }
@@ -262,7 +262,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         InvestmentData memory data = investmentData[tokenId];
         
         // Can fully redeem after 1 year and not yet redeemed
-        return (block.timestamp >= data.purchaseTimestamp + 365 days) && 
+        return (block.timestamp >= data.closeDateInvestment + 365 days) && 
                !data.redeemed;
     }
 
@@ -486,280 +486,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         transferOwnership(newOwner);
     }
 
-    /**
-     * @dev Get all NFT tokens owned by a wallet address with pagination
-     * @param walletAddress The address to get NFT tokens for
-     * @param offset Starting position (0-based)
-     * @param limit Maximum number of tokens to return (recommended: 10-50)
-     * @return tokenIds Array of token IDs owned by the address
-     * @return investmentDetails Array of investment data for each token
-     * @return totalTokens Total number of tokens owned by the address
-     * @return totalPages Total number of pages available
-     * @return currentPage Current page number (1-based)
-     * @return hasMore Whether there are more tokens available
-     */
-    function getWalletNFTsPaginated(
-        address walletAddress,
-        uint256 offset,
-        uint256 limit
-    )
-        external
-        view
-        returns (
-            uint256[] memory tokenIds,
-            InvestmentData[] memory investmentDetails,
-            uint256 totalTokens,
-            uint256 totalPages,
-            uint256 currentPage,
-            bool hasMore
-        )
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        require(limit > 0 && limit <= 100, "Limit must be between 1 and 100");
-        
-        // First, get all token IDs owned by the wallet
-        uint256[] memory allUserTokens = _getAllTokensOwnedBy(walletAddress);
-        totalTokens = allUserTokens.length;
-        
-        require(offset < totalTokens || totalTokens == 0, "Offset exceeds total tokens");
-        
-        // Calculate pagination info
-        totalPages = totalTokens > 0 ? (totalTokens + limit - 1) / limit : 0;
-        currentPage = totalTokens > 0 ? (offset / limit) + 1 : 0;
-        
-        // Calculate actual number of tokens to return
-        uint256 remainingTokens = totalTokens > offset ? totalTokens - offset : 0;
-        uint256 actualLimit = remainingTokens > limit ? limit : remainingTokens;
-        hasMore = offset + actualLimit < totalTokens;
-        
-        if (actualLimit == 0) {
-            return (
-                new uint256[](0),
-                new InvestmentData[](0),
-                totalTokens,
-                totalPages,
-                currentPage,
-                hasMore
-            );
-        }
-        
-        // Initialize arrays with actual size needed
-        tokenIds = new uint256[](actualLimit);
-        investmentDetails = new InvestmentData[](actualLimit);
-        
-        // Populate arrays with paginated data
-        for (uint256 i = 0; i < actualLimit; i++) {
-            uint256 tokenId = allUserTokens[offset + i];
-            tokenIds[i] = tokenId;
-            investmentDetails[i] = investmentData[tokenId];
-        }
-        
-        return (
-            tokenIds,
-            investmentDetails,
-            totalTokens,
-            totalPages,
-            currentPage,
-            hasMore
-        );
-    }
-
-    /**
-     * @dev Internal function to get all token IDs owned by a specific address
-     * @param owner The address to get tokens for
-     * @return ownedTokens Array of token IDs owned by the address
-     */
-    function _getAllTokensOwnedBy(address owner) 
-        internal 
-        view 
-        returns (uint256[] memory ownedTokens) 
-    {
-        // First pass: count owned tokens
-        uint256 ownedCount = 0;
-        for (uint256 tokenId = 0; tokenId < _nextTokenId; tokenId++) {
-            if (tokenExists[tokenId] && ownerOf(tokenId) == owner) {
-                ownedCount++;
-            }
-        }
-        
-        // Second pass: collect token IDs
-        ownedTokens = new uint256[](ownedCount);
-        uint256 index = 0;
-        for (uint256 tokenId = 0; tokenId < _nextTokenId; tokenId++) {
-            if (tokenExists[tokenId] && ownerOf(tokenId) == owner) {
-                ownedTokens[index] = tokenId;
-                index++;
-            }
-        }
-        
-        return ownedTokens;
-    }
-
-    /**
-     * @dev Get wallet NFT summary (non-paginated) for quick overview
-     * @param walletAddress The address to get summary for
-     * @return totalNFTs Total number of NFTs owned
-     * @return activeInvestments Number of NFTs not yet redeemed
-     * @return redeemedInvestments Number of NFTs already redeemed
-     * @return claimedRewards Number of NFTs with early rewards claimed
-     * @return totalInvestedValue Total value invested across all NFTs
-     * @return totalExpectedRewards Total expected rewards across all NFTs
-     * @return claimableAmount Amount that can be claimed right now
-     */
-    function getWalletNFTSummary(address walletAddress)
-        external
-        view
-        returns (
-            uint256 totalNFTs,
-            uint256 activeInvestments,
-            uint256 redeemedInvestments,
-            uint256 claimedRewards,
-            uint256 totalInvestedValue,
-            uint256 totalExpectedRewards,
-            uint256 claimableAmount
-        )
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        
-        uint256[] memory userTokens = _getAllTokensOwnedBy(walletAddress);
-        totalNFTs = userTokens.length;
-        
-        if (totalNFTs == 0) {
-            return (0, 0, 0, 0, 0, 0, 0);
-        }
-        
-        uint256 currentTime = block.timestamp;
-        
-        for (uint256 i = 0; i < userTokens.length; i++) {
-            InvestmentData memory data = investmentData[userTokens[i]];
-            uint256 principal = data.totalTokenOpenInvestment * data.tokenPrice;
-            uint256 reward = (principal * data.rewardPercentage) / 10000;
-            
-            totalInvestedValue += principal;
-            totalExpectedRewards += reward;
-            
-            if (data.redeemed) {
-                redeemedInvestments++;
-            } else {
-                activeInvestments++;
-            }
-            
-            if (data.rewardClaimed) {
-                claimedRewards++;
-            }
-            
-            // Calculate claimable amount
-            if (!data.redeemed) {
-                uint256 timeSincePurchase = currentTime - data.purchaseTimestamp;
-                
-                if (timeSincePurchase >= 180 days) {
-                    if (timeSincePurchase >= 365 days) {
-                        // Full redemption available
-                        if (data.rewardClaimed) {
-                            claimableAmount += principal + (reward / 2);
-                        } else {
-                            claimableAmount += principal + reward;
-                        }
-                    } else if (!data.rewardClaimed) {
-                        // Early reward available
-                        claimableAmount += (reward / 2);
-                    }
-                }
-            }
-        }
-        
-        return (
-            totalNFTs,
-            activeInvestments,
-            redeemedInvestments,
-            claimedRewards,
-            totalInvestedValue,
-            totalExpectedRewards,
-            claimableAmount
-        );
-    }
     
-    function _getInvestorRounds(address walletAddress) 
-        internal 
-        view 
-        returns (uint256[] memory roundIds) 
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        uint256[] memory tokenIds = _getAllTokensOwnedBy(walletAddress);
-        
-        if (tokenIds.length == 0) {
-            return new uint256[](0);
-        }
-        
-        // Create temporary array to store all round IDs
-        uint256[] memory allRoundIds = new uint256[](tokenIds.length);
-        
-        // Collect all round IDs
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            allRoundIds[i] = investmentData[tokenIds[i]].roundId;
-        }
-        
-        // Count unique round IDs
-        uint256 uniqueCount = 0;
-        for (uint256 i = 0; i < allRoundIds.length; i++) {
-            bool isUnique = true;
-            for (uint256 j = 0; j < i; j++) {
-                if (allRoundIds[i] == allRoundIds[j]) {
-                    isUnique = false;
-                    break;
-                }
-            }
-            if (isUnique) {
-                uniqueCount++;
-            }
-        }
-        
-        // Collect unique round IDs
-        roundIds = new uint256[](uniqueCount);
-        uint256 index = 0;
-        for (uint256 i = 0; i < allRoundIds.length; i++) {
-            bool isUnique = true;
-            for (uint256 j = 0; j < i; j++) {
-                if (allRoundIds[i] == allRoundIds[j]) {
-                    isUnique = false;
-                    break;
-                }
-            }
-            if (isUnique) {
-                roundIds[index] = allRoundIds[i];
-                index++;
-            }
-        }
-        
-        return roundIds;
-    }
-    /**
-     * @dev Get all investment round IDs for a wallet
-     * @param walletAddress The address to get round IDs for
-     * @return roundIds Array of unique round IDs associated with the wallet
-     */
-    function getInvestorRounds(address walletAddress) 
-        external 
-        view 
-        returns (uint256[] memory roundIds) 
-    {
-       return _getInvestorRounds(walletAddress);
-    }
-    
-
-    /**
-     * @dev Get all token IDs owned by a wallet (convenience function, non-paginated)
-     * @param walletAddress The address to get token IDs for
-     * @return tokenIds Array of all token IDs owned by the address
-     */
-    function getWalletTokenIds(address walletAddress) 
-        external 
-        view 
-        returns (uint256[] memory tokenIds) 
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        return _getAllTokensOwnedBy(walletAddress);
-    }
 
     function _processedDividedEarnings(uint256[] memory tokenIds) internal view returns (uint256 dividendEarned, uint256 dividendPending) {
         require(tokenIds.length > 0, "No token IDs provided");
@@ -780,6 +507,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
             }
 
         }
+        
         return (dividendEarned, dividendPending);
     }
 
@@ -799,25 +527,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         return _processedDividedEarnings(tokenIds);
     }
 
-    /**
-     * @dev Get wallet token details including round IDs
-     * @param walletAddress The address to get token details for
-     * @return tokenIds Array of token IDs owned by the address
-     */
-    function _getWalletTokensDetail(address walletAddress) 
-        external 
-        view 
-        returns (uint256[] memory tokenIds, InvestmentData[] memory nftsDetail) 
-    {
-        require(walletAddress != address(0), "Invalid wallet address");
-        tokenIds = _getAllTokensOwnedBy(walletAddress);
-        nftsDetail = new InvestmentData[](tokenIds.length);
-        for(uint256 i = 0; i < tokenIds.length; i++){
-            nftsDetail[i] = investmentData[tokenIds[i]];
-        }
-
-        return (tokenIds, nftsDetail);
-    }
 
     function getTokenDetail(uint256 tokenId) 
         external 
@@ -845,6 +554,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
 
 
     
+    //move to analytic
     function getInvestorSummary(address investor) 
         external 
         view 
@@ -852,8 +562,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
             uint256 totalTokensOwned,
             uint256[] memory nftTokenIds,
             uint256 totalInvestment,
-            uint256 dividendsEarned,
-            uint256[] memory activeRounds
+            uint256 dividendsEarned
         ) 
     {
         require(investor != address(0), "Invalid investor address");
@@ -867,9 +576,47 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
             totalInvestment += data.tokenPrice * data.totalTokenOpenInvestment;
         }
         (dividendsEarned, ) = _processedDividedEarnings(tokenIds);
-        activeRounds = _getInvestorRounds(investor);
-        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned, activeRounds);
+        return (totalTokensOwned, nftTokenIds, totalInvestment, dividendsEarned);
     }
+
+
+    function _getAllTokensOwnedBy(address owner) 
+        internal 
+        view 
+        returns (uint256[] memory ownedTokens) 
+    {
+        // First pass: count owned tokens
+        uint256 ownedCount = 0;
+        for (uint256 tokenId = 0; tokenId < _nextTokenId; tokenId++) {
+            if (tokenExists[tokenId] && ownerOf(tokenId) == owner) {
+                ownedCount++;
+            }
+        }
+        
+        // Second pass: collect token IDs
+        ownedTokens = new uint256[](ownedCount);
+        uint256 index = 0;
+        for (uint256 tokenId = 0; tokenId < _nextTokenId; tokenId++) {
+            if (tokenExists[tokenId] && ownerOf(tokenId) == owner) {
+                ownedTokens[index] = tokenId;
+                index++;
+            }
+        }
+        
+        return ownedTokens;
+    }
+
+    
+    function getAllTokensOwnedBy(address owner) 
+        external 
+        view 
+        returns (uint256[] memory ownedTokens) 
+    {
+        require(owner != address(0), "Invalid owner address");
+        return _getAllTokensOwnedBy(owner);
+    }
+
+    
 
     /**
      * @dev Get user's NFTs for a specific round using ERC721Enumerable (for tradable NFTs)

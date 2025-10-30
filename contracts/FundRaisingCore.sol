@@ -57,7 +57,6 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     // Storage
     mapping(uint256 => InvestmentRound) public investmentRounds;
     mapping(uint256 => uint256[]) public roundTokenIds;
-    mapping(uint256 => mapping(address => uint256[])) public userNFTsInRound;
     mapping(uint256 => uint256) public roundLedger;
     mapping(uint256 => uint256) public roundRewardPool;
     mapping(address => mapping(uint256 => uint256)) public userClaimedRewards;
@@ -145,6 +144,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         
         emit InvestmentRoundCreated(roundId, roundName, tokenPrice);
     }
+    
     
     /**
      * @dev Invest in a round by purchasing tokens
@@ -336,19 +336,37 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     function getRoundTokenCount(uint256 roundId) external view returns (uint256) {
         return roundTokenIds[roundId].length;
     }
-    
-    function getUserInvestments(address user) external view returns (uint256[] memory) {
-        return dzNFT.getWalletTokenIds(user);
-    }
-    
-    function getUserNFTsInRound(uint256 roundId, address user) external view returns (uint256[] memory) {
-        return userNFTsInRound[roundId][user];
-    }
-    // get investor round investment base on NFT token owner
-    function getInvestorRounds(address investor) external view returns (uint256[] memory) {
 
-        return dzNFT.getInvestorRounds(investor);
-    } 
+    
+    function _getRoundsDetail(uint256[] memory roundIds) 
+        internal 
+        view 
+        returns (InvestmentRound[] memory) 
+    {
+        InvestmentRound[] memory rounds = new InvestmentRound[](roundIds.length);
+        for (uint256 i = 0; i < roundIds.length; i++) {
+            rounds[i] = investmentRounds[roundIds[i]];
+        }
+        return rounds;
+    }
+
+    function getRoundsDetail(uint256[] memory roundIds) 
+        external 
+        view 
+        returns (InvestmentRound[] memory) 
+    {
+        return _getRoundsDetail(roundIds);
+    }
+
+    function getAllTokensOwnedBy(address investor) 
+        external 
+        view 
+        returns (uint256[] memory) 
+    {
+        return dzNFT.getAllTokensOwnedBy(investor);
+    }
+    
+
     function getInvestorSummary(address investor) 
         external 
         view 
@@ -356,13 +374,23 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
             uint256 totalTokensOwned,
             uint256[] memory nftTokenIds,
             uint256 totalInvestment,
-            uint256 dividendsEarned,
-            uint256[] memory activeRounds
+            uint256 dividendsEarned
         ) 
     {
         return dzNFT.getInvestorSummary(investor);
     }
 
+    function getWalletTokensDetail(address investor) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds, DZNFT.InvestmentData[] memory nftsDetail) 
+    {
+        return dzNFT.getWalletTokensDetail(investor);
+    }
+
+    /**
+     * @dev Get total count of rounds for pagination calculation
+     */
     function batchGetTokensDetail(uint256[] memory tokenIds) 
         external 
         view 
@@ -438,5 +466,12 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         address oldContract = authorizedClaimsContract;
         authorizedClaimsContract = _claimsContract;
         emit AuthorizedClaimsContractUpdated(oldContract, _claimsContract);
+    }
+    function getInvestmentData(uint256 tokenId) 
+        external 
+        view 
+        returns (DZNFT.InvestmentData memory)
+    {
+        return dzNFT.getInvestmentData(tokenId);
     }
 }

@@ -103,34 +103,9 @@ contract FundRaisingFactory is Ownable {
     
     /**
      * @dev Get all deployments by a specific deployer
+     * REMOVED: Function too large for contract size limit
+     * Use events or external indexing service instead
      */
-    function getDeploymentsByDeployer(address deployer) 
-        external 
-        view 
-        returns (address[] memory coreContracts) 
-    {
-        uint256 count = 0;
-        
-        // Count deployments by this deployer
-        for (uint256 i = 0; i < allDeployments.length; i++) {
-            if (deployments[allDeployments[i]].deployer == deployer) {
-                count++;
-            }
-        }
-        
-        // Create result array
-        coreContracts = new address[](count);
-        uint256 index = 0;
-        
-        for (uint256 i = 0; i < allDeployments.length; i++) {
-            if (deployments[allDeployments[i]].deployer == deployer) {
-                coreContracts[index] = allDeployments[i];
-                index++;
-            }
-        }
-        
-        return coreContracts;
-    }
     
     /**
      * @dev Get total number of deployments
@@ -141,16 +116,9 @@ contract FundRaisingFactory is Ownable {
     
     /**
      * @dev Get active deployments count
+     * REMOVED: Function too large for contract size limit
+     * Use events or external indexing service instead
      */
-    function getActiveDeploymentsCount() external view returns (uint256) {
-        uint256 count = 0;
-        for (uint256 i = 0; i < allDeployments.length; i++) {
-            if (deployments[allDeployments[i]].active) {
-                count++;
-            }
-        }
-        return count;
-    }
     
     /**
      * @dev Set deployment status (factory owner only)
@@ -166,45 +134,7 @@ contract FundRaisingFactory is Ownable {
     
     /**
      * @dev Get deployment stats
+     * REMOVED: Function too large for contract size limit
+     * Use events or external indexing service instead
      */
-    function getDeploymentStats() 
-        external 
-        view 
-        returns (
-            uint256 totalDeployments,
-            uint256 activeDeployments,
-            uint256 deploymentsFunded,
-            address[] memory recentDeployments
-        ) 
-    {
-        totalDeployments = allDeployments.length;
-        
-        uint256 activeCount = 0;
-        uint256 fundedCount = 0;
-        
-        for (uint256 i = 0; i < allDeployments.length; i++) {
-            if (deployments[allDeployments[i]].active) {
-                activeCount++;
-            }
-            
-            // Check if deployment has any USDT raised
-            FundRaisingCore core = FundRaisingCore(allDeployments[i]);
-            if (core.totalUSDTRaised() > 0) {
-                fundedCount++;
-            }
-        }
-        
-        activeDeployments = activeCount;
-        deploymentsFunded = fundedCount;
-        
-        // Get last 5 deployments
-        uint256 recentCount = allDeployments.length > 5 ? 5 : allDeployments.length;
-        recentDeployments = new address[](recentCount);
-        
-        for (uint256 i = 0; i < recentCount; i++) {
-            recentDeployments[i] = allDeployments[allDeployments.length - 1 - i];
-        }
-        
-        return (totalDeployments, activeDeployments, deploymentsFunded, recentDeployments);
-    }
 }

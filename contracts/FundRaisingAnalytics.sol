@@ -86,17 +86,33 @@ contract FundRaisingAnalytics {
         return coreContract.getRoundTokenIds(roundId);
     }
     
-    /**
-     * @dev Get all investments made by a user
-     */
-    function getUserInvestments(address user) 
+   
+
+    function getRoundsDetail(uint256[] memory roundIds) 
         external 
         view 
-        returns (uint256[] memory) 
+        returns (FundRaisingCore.InvestmentRound[] memory) 
     {
-        return coreContract.getUserInvestments(user);
+        return coreContract.getRoundsDetail(roundIds);
     }
     
+    function getWalletTokensDetail(address investor) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds, DZNFT.InvestmentData[] memory nftsDetail) 
+    {
+        return coreContract.getWalletTokensDetail(investor);
+    }
+
+    
+    function getInvestorRoundsDetail(address investor) 
+        external 
+        view 
+        returns (FundRaisingCore.InvestmentRound[] memory) 
+    {
+        uint256[] memory roundIds = _getInvestorRounds(investor);
+        return coreContract.getRoundsDetail(roundIds);
+    }
  
     /**
      * @dev Get total count of rounds for pagination calculation
@@ -126,22 +142,10 @@ contract FundRaisingAnalytics {
             uint256 totalTokensOwned,
             uint256[] memory nftTokenIds,
             uint256 totalInvestment,
-            uint256 dividendsEarned,
-            uint256[] memory activeRounds
+            uint256 dividendsEarned
         ) 
     {
         return coreContract.getInvestorSummary(investor);
-    }
-    
-    /**
-     * @dev Get investor rounds
-     */
-    function getInvestorRounds(address investor) 
-        external 
-        view 
-        returns (uint256[] memory) 
-    {
-        return coreContract.getInvestorRounds(investor);
     }
     
     /**
@@ -155,4 +159,72 @@ contract FundRaisingAnalytics {
         (,,,,,, uint256 endDateInvestment,, bool isActive,,,) = coreContract.investmentRounds(roundId);
         return (block.timestamp > endDateInvestment && isActive);
     }
+    
+    function getAllTokensOwnedBy(address investor) 
+        external 
+        view 
+        returns (uint256[] memory) 
+    {
+        return coreContract.getAllTokensOwnedBy(investor);
+    }
+    
+    function _getInvestorRounds(address investor) 
+        internal 
+        view 
+        returns (uint256[] memory roundIds) 
+    {
+        require(investor != address(0), "Invalid wallet address");
+        uint256[] memory tokenIds = coreContract.getAllTokensOwnedBy(investor);
+        if (tokenIds.length == 0) {
+            return new uint256[](0);
+        }
+                uint256[] memory allRoundIds = new uint256[](tokenIds.length);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            allRoundIds[i] = coreContract.getInvestmentData(tokenIds[i]).roundId;
+        }
+         // Count unique round IDs
+        uint256 uniqueCount = 0;
+        for (uint256 i = 0; i < allRoundIds.length; i++) {
+            bool isUnique = true;
+            for (uint256 j = 0; j < i; j++) {
+                if (allRoundIds[i] == allRoundIds[j]) {
+                    isUnique = false;
+                    break;
+                }
+            }
+            if (isUnique) {
+                uniqueCount++;
+            }
+        }
+        
+        // Collect unique round IDs
+        roundIds = new uint256[](uniqueCount);
+        uint256 index = 0;
+        for (uint256 i = 0; i < allRoundIds.length; i++) {
+            bool isUnique = true;
+            for (uint256 j = 0; j < i; j++) {
+                if (allRoundIds[i] == allRoundIds[j]) {
+                    isUnique = false;
+                    break;
+                }
+            }
+            if (isUnique) {
+                roundIds[index] = allRoundIds[i];
+                index++;
+            }
+        }
+        
+        return roundIds;
+    }
+
+
+    function getInvestorRounds(address investor) 
+        external 
+        view 
+        returns (uint256[] memory roundIds) 
+    {
+        return _getInvestorRounds(investor);
+    }
+
+  
 }

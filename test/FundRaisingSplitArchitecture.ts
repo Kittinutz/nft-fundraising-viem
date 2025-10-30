@@ -507,81 +507,6 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     }
   });
 
-  it("Should test DZNFT wallet pagination with multiple NFTs", async function () {
-    const nft = await viem.getContractAt("DZNFT", nftContract.address);
-    const usdt = await viem.getContractAt("MockUSDT", usdtContract.address);
-
-    // Setup: Mint USDT to wallet2 for investments
-    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
-
-    // Create a test round
-    const currentTime = await getCurrentTimestamp();
-    await fundRaisingCore.write.createInvestmentRound([
-      "Test Round for NFT Pagination",
-      500n,
-      1500n,
-      1000n,
-      BigInt(currentTime + 86400 * 30),
-      BigInt(currentTime + 86400 * 365),
-    ]);
-
-    // Setup contract for wallet2
-    const coreContractW2 = await viem.getContractAt(
-      "FundRaisingCore",
-      fundRaisingCore.address,
-      { client: { wallet: wallet2 } }
-    );
-    const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract.address, {
-      client: { wallet: wallet2 },
-    });
-
-    // Approve USDT for investments
-    await usdtW2.write.approve([
-      fundRaisingCore.address,
-      1000000000n * 10n ** 18n,
-    ]);
-
-    // Make multiple investments to create 7 NFTs
-    const investmentAmounts = [1n, 2n, 1n, 3n]; // Total: 7 NFTs
-    for (const amount of investmentAmounts) {
-      await coreContractW2.write.investInRound([0n, amount]);
-    }
-
-    // Test: Get all NFTs owned by wallet2
-    const allTokenIds = await nft.read.getWalletTokenIds([
-      wallet2.account.address,
-    ]);
-    assert.equal(allTokenIds.length, 7, "Should have 7 NFTs total");
-
-    // Test: Get wallet NFT summary
-    const summary = await nft.read.getWalletNFTSummary([
-      wallet2.account.address,
-    ]);
-    const [
-      totalNFTs,
-      activeInvestments,
-      redeemedInvestments,
-      claimedRewards,
-      totalInvestedValue,
-      totalExpectedRewards,
-      claimableAmount,
-    ] = summary;
-
-    assert.equal(totalNFTs, 7n, "Summary should show 7 total NFTs");
-    assert.equal(activeInvestments, 7n, "Should have 7 active investments");
-
-    // Test pagination
-    const firstPage = await nft.read.getWalletNFTsPaginated([
-      wallet2.account.address,
-      0n,
-      3n,
-    ]);
-
-    const [firstPageTokenIds, firstPageDetails, firstPageTotal] = firstPage;
-    assert.equal(firstPageTokenIds.length, 3, "First page should have 3 NFTs");
-    assert.equal(firstPageTotal, 7n, "Total should be 7");
-  });
-
   // ===== DISPLAY AND SORTING TESTS =====
   it("Should display round list with last created round first", async function () {
     // Create multiple rounds
@@ -737,9 +662,10 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     assert.equal(nftBalanceW2Before, 2n, "Wallet2 should have 2 NFTs");
 
     // Get token IDs
-    const tokenIds = await nft.read.getWalletTokenIds([
+    const tokenIds = await nft.read.getAllTokensOwnedBy([
       wallet2.account.address,
     ]);
+    console.log("---->1");
     assert.equal(tokenIds.length, 2, "Should have 2 token IDs");
 
     // Transfer NFTs from wallet2 to wallet3
@@ -753,6 +679,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       wallet3.account.address,
       tokenIds[1],
     ]);
+
+    console.log("---->2");
 
     // Verify transfer
     const nftBalanceW3After = await nftContract.read.balanceOf([
@@ -845,7 +773,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
-    const tokenIds = await nft.read.getWalletTokenIds([
+    const tokenIds = await nft.read.getWalletTokensDetail([
       wallet2.account.address,
     ]);
 
@@ -877,7 +805,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     });
 
     // Get existing NFTs owned by wallet2 from the beforeEach setup and previous tests
-    const wallet2TokenIds = await nft.read.getWalletTokenIds([
+    const wallet2TokenIds = await nft.read.getAllTokensOwnedBy([
       wallet2.account.address,
     ]);
 
@@ -969,7 +897,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
-    const allTokenIds = await nft.read.getWalletTokenIds([
+    const [allTokenIds] = await nft.read.getWalletTokensDetail([
       wallet2.account.address,
     ]);
     const tokenIdToTransfer = allTokenIds[allTokenIds.length - 1]; // Get last NFT
