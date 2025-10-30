@@ -207,13 +207,7 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
         view 
         returns (uint256[] memory tokenIds, DZNFT.InvestmentData[] memory nftsDetail) 
     {
-        require(investor != address(0), "Invalid wallet address");
-        tokenIds = coreContract.getAllTokensOwnedBy(investor);
-        nftsDetail = new DZNFT.InvestmentData[](tokenIds.length);
-        for(uint256 i = 0; i < tokenIds.length; i++){
-            nftsDetail[i] = coreContract.getInvestmentData(tokenIds[i]);
-        }
-        return (tokenIds, nftsDetail);
+        return coreContract.getWalletTokensDetail(investor);
     }
 
     
@@ -288,7 +282,7 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
         return (block.timestamp > endDateInvestment && isActive);
     }
     
-   function getAllTokensOwnedBy(address investor) 
+    function getAllTokensOwnedBy(address investor) 
         external 
         view 
         returns (uint256[] memory) 

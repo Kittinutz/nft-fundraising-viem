@@ -773,7 +773,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
-    const tokenIds = await fundRaisingAnalytics.read.getWalletTokensDetail([
+    const tokenIds = await nft.read.getWalletTokensDetail([
       wallet2.account.address,
     ]);
 
@@ -897,9 +897,9 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
-    const [allTokenIds] = await fundRaisingAnalytics.read.getWalletTokensDetail(
-      [wallet2.account.address]
-    );
+    const [allTokenIds] = await nft.read.getWalletTokensDetail([
+      wallet2.account.address,
+    ]);
     const tokenIdToTransfer = allTokenIds[allTokenIds.length - 1]; // Get last NFT
 
     // Enable transfer lock on the NFT (as executor)

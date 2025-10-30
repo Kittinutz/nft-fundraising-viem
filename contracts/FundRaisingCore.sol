@@ -353,7 +353,13 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         return dzNFT.getAllTokensOwnedBy(investor);
     }
     
- 
+    function getWalletTokensDetail(address investor) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds, DZNFT.InvestmentData[] memory nftsDetail) 
+    {
+        return dzNFT.getWalletTokensDetail(investor);
+    }
 
     /**
      * @dev Get total count of rounds for pagination calculation
