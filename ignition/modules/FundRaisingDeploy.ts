@@ -12,9 +12,6 @@ export default buildModule("FundRaisingSuite", (m) => {
     10000000n * 10n ** 18n, // 10 million USDT initial supply
   ]);
 
-  // Deploy FundRaisingFactory
-  const factory = m.contract("FundRaisingFactory");
-
   // Deploy complete fund raising suite using factory
   // const deployTx = m.call(factory, "deployFundRaising", [dzNft, usdt]);
   const FundRaisingCore = m.contract("FundRaisingCore", [dzNft, usdt]);
@@ -68,7 +65,6 @@ export default buildModule("FundRaisingSuite", (m) => {
     }
   );
   return {
-    factory,
     dzNft,
     usdt,
     FundRaisingCore,

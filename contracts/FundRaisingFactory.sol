@@ -11,7 +11,6 @@ import "./FundRaisingAdmin.sol";
  * @dev Factory contract to deploy and manage fund raising contract suite
  */
 contract FundRaisingFactory is Ownable {
-    
     struct DeploymentInfo {
         address coreContract;
         address analyticsContract;

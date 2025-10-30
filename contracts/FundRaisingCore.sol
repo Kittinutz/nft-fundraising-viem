@@ -144,6 +144,9 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         require(tokenAmount > 0 && tokenAmount <= MAX_TOKENS_PER_INVESTMENT, "Invalid token amount");
         
         InvestmentRound storage round = investmentRounds[roundId];
+        
+        // ✅ SECURITY: Check for overflow before multiplication
+        require(tokenAmount <= type(uint256).max / round.tokenPrice, "Calculation overflow risk");
         uint256 usdtAmount = tokenAmount * round.tokenPrice;
         
         require(
