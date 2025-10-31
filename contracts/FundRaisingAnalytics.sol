@@ -15,8 +15,8 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
     FundRaisingCore public immutable coreContract;
     
     // ✅ SECURITY: Constants for limits and protection
-    uint256 public constant MAX_TOKENS_PER_QUERY = 500;
-    uint256 public constant MAX_ROUNDS_PER_QUERY = 100;
+    uint256 public constant MAX_TOKENS_PER_QUERY = 1000;
+    uint256 public constant MAX_ROUNDS_PER_QUERY = 1000;
     uint256 public constant MAX_ROUND_ID = 10000;
     uint256 public constant RATE_LIMIT_WINDOW = 1 minutes;
     uint256 public constant MAX_CALLS_PER_WINDOW = 20;
@@ -372,9 +372,6 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
         }
         
         for (uint256 i = 0; i < tokenIds.length; i++) {
-            if (!coreContract.getExistsToken(tokenIds[i])) {
-                revert TokenNotExists(tokenIds[i]);
-            }
             
             DZNFT.InvestmentData memory data = coreContract.getInvestmentData(tokenIds[i]);
             

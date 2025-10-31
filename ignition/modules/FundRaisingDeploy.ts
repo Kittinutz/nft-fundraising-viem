@@ -64,6 +64,14 @@ export default buildModule("FundRaisingSuite", (m) => {
       id: "CreatePublicSaleRound",
     }
   );
+  m.call(dzNft, "updateExecutorRole", [FundRaisingCore, true], {
+    id: "MyUnique1",
+  });
+  m.call(dzNft, "updateExecutorRole", [FundRaisingClaims, true], {
+    id: "MyUnique2",
+  });
+
+  // Grant executor role to core contract
   return {
     dzNft,
     usdt,
