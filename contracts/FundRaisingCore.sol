@@ -167,7 +167,6 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
                 roundId,
                 round.tokenPrice,
                 round.rewardPercentage,
-                1,
                 round.closeDateInvestment,
                 round.endDateInvestment
             );
@@ -178,7 +177,6 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
                 roundId,
                 round.tokenPrice,
                 round.rewardPercentage,
-                1,
                 round.closeDateInvestment,
                 round.endDateInvestment
             );
@@ -386,7 +384,6 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
                 roundId: nftData.roundId,
                 tokenPrice: nftData.tokenPrice,
                 rewardPercentage: nftData.rewardPercentage,
-                totalTokenOpenInvestment: nftData.totalTokenOpenInvestment,
                 purchaseTimestamp: nftData.purchaseTimestamp,
                 closeDateInvestment: nftData.closeDateInvestment,
                 endDateInvestment: nftData.endDateInvestment,

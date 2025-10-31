@@ -27,7 +27,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId;
         uint256 tokenPrice;
         uint256 rewardPercentage;
-        uint256 totalTokenOpenInvestment;
         uint256 purchaseTimestamp;
         uint256 closeDateInvestment;
         uint256 endDateInvestment;
@@ -52,6 +51,8 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     event MetadataStamped(uint256 indexed tokenId, string metadata);
     event ExecutorRoleUpdated(address indexed account, bool granted);
     event RewardClaimed(uint256 indexed tokenId, address indexed claimer);
+    event NFTRedeemed(uint256 indexed tokenId, address indexed owner);
+    event TransferUnlocked(uint256 indexed tokenId, address indexed owner);
     event TransferLockUpdated(uint256 indexed tokenId, bool locked);
     event BaseURIUpdated(string newBaseURI);
     event TokenURIUpdated(uint256 indexed tokenId, string newTokenURI);
@@ -95,14 +96,12 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId,
         uint256 tokenPrice,
         uint256 rewardPercentage,
-        uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage");
-        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
@@ -113,7 +112,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
             roundId: roundId,
             tokenPrice: tokenPrice,
             rewardPercentage: rewardPercentage,
-            totalTokenOpenInvestment: totalTokenOpenInvestment,
             purchaseTimestamp: block.timestamp,
             closeDateInvestment: closeDateInvestment,
             endDateInvestment: endDateInvestment,
@@ -138,7 +136,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
      * @param roundId Investment round ID
      * @param tokenPrice Price per token
      * @param rewardPercentage Reward percentage
-     * @param totalTokenOpenInvestment Total tokens per NFT
      * @param closeDateInvestment Close date for investment
      * @param endDateInvestment End date for investment
      * @return tokenIds Array of minted token IDs
@@ -149,7 +146,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId,
         uint256 tokenPrice,
         uint256 rewardPercentage,
-        uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256[] memory tokenIds) {
@@ -157,7 +153,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         require(count > 0 && count <= 50, "Invalid count (1-80)");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0, "Invalid reward percentage");
-        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
@@ -172,7 +167,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
                 roundId: roundId,
                 tokenPrice: tokenPrice,
                 rewardPercentage: rewardPercentage,
-                totalTokenOpenInvestment: totalTokenOpenInvestment,
                 purchaseTimestamp: purchaseTime,
                 closeDateInvestment: closeDateInvestment,
                 endDateInvestment: endDateInvestment,
@@ -574,6 +568,62 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     }
 
     
+
+    /**
+     * @dev Batch mark multiple tokens as reward claimed for gas efficiency
+     * @param tokenIds Array of token IDs to mark as reward claimed
+     */
+    function batchMarkRewardClaimed(uint256[] memory tokenIds) 
+        external 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
+    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            require(!investmentData[tokenId].redeemed, "Token already redeemed");
+            
+            investmentData[tokenId].rewardClaimed = true;
+            emit RewardClaimed(tokenId, ownerOf(tokenId));
+        }
+    }
+
+    /**
+     * @dev Batch mark multiple tokens as redeemed for gas efficiency
+     * @param tokenIds Array of token IDs to mark as redeemed
+     */
+    function batchMarkAsRedeemed(uint256[] memory tokenIds) 
+        external 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
+    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            require(!investmentData[tokenId].redeemed, "Token already redeemed");
+            
+            investmentData[tokenId].redeemed = true;
+            emit NFTRedeemed(tokenId, ownerOf(tokenId));
+        }
+    }
+
+    /**
+     * @dev Batch unlock transfer for multiple tokens for gas efficiency
+     * @param tokenIds Array of token IDs to unlock transfer
+     */
+    function batchUnlockTransfer(uint256[] memory tokenIds) 
+        external 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
+    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            
+            investmentData[tokenId].transferLocked = false;
+            emit TransferUnlocked(tokenId, ownerOf(tokenId));
+        }
+    }
 
     /**
      * @dev Get user's NFTs for a specific round using ERC721Enumerable (for tradable NFTs)

@@ -447,7 +447,7 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
         for (uint256 i = 0; i < tokenIds.length; i++) {
             DZNFT.InvestmentData memory data = coreContract.getInvestmentData(tokenIds[i]);
             nftTokenIds[i] = tokenIds[i];
-            totalInvestment += data.tokenPrice * data.totalTokenOpenInvestment;
+            totalInvestment += data.tokenPrice;
         }
         (dividendsEarned, ) = _processedDividedEarnings(tokenIds);
         
