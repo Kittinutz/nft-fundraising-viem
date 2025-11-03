@@ -43,6 +43,8 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     mapping(uint256 => uint256[]) public roundTokenIds;
     mapping(uint256 => uint256) public roundLedger;
     mapping(uint256 => uint256) public roundRewardPool;
+    mapping(uint256 => uint256) public roundInvestedAmount;
+
     mapping(address => mapping(uint256 => uint256)) public userClaimedRewards;
     
     uint256 public _nextRoundId;
@@ -56,7 +58,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     event RoundStatusChanged(uint256 indexed roundId, bool isActive);
     event USDTTokenUpdated(address indexed oldToken, address indexed newToken);
     event AuthorizedClaimsContractUpdated(address indexed oldContract, address indexed newContract);
-    
+    event EmergencyRoundWithdrawal( uint256 roundId, uint256 amount, address recipient);
     // Modifiers
     modifier onlyAuthorizedClaimsContract() {
         require(msg.sender == authorizedClaimsContract, "Only authorized claims contract can call this");
@@ -144,7 +146,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         require(tokenAmount > 0 && tokenAmount <= MAX_TOKENS_PER_INVESTMENT, "Invalid token amount");
         
         InvestmentRound storage round = investmentRounds[roundId];
-        
+        require(block.timestamp <= round.closeDateInvestment, "Investment period has ended");
         // ✅ SECURITY: Check for overflow before multiplication
         require(tokenAmount <= type(uint256).max / round.tokenPrice, "Calculation overflow risk");
         uint256 usdtAmount = tokenAmount * round.tokenPrice;
@@ -194,6 +196,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         // Update round data
         round.tokensSold += tokenAmount;
         roundLedger[roundId] += usdtAmount;
+        roundInvestedAmount[roundId] += usdtAmount;
         totalUSDTRaised += usdtAmount;
         
         emit Investment(msg.sender, roundId, tokenAmount, usdtAmount);
@@ -215,7 +218,8 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         
         roundRewardPool[roundId] += amount * 10 ** USDT_DECIMALS;
         roundLedger[roundId] += amount * 10 ** USDT_DECIMALS;
-        
+        investmentRounds[roundId].status = Status.DIVIDEND_PAID;
+
         emit RewardAdded(roundId, amount, roundRewardPool[roundId]);
     }
     
@@ -248,6 +252,14 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     {
         investmentRounds[roundId].isActive = active;
         emit RoundStatusChanged(roundId, active);
+    }
+
+    function updateStatus(uint256 roundId, Status status) 
+        external 
+        onlyOwner 
+        roundExists(roundId) 
+    {
+        investmentRounds[roundId].status = status;
     }
     
     /**
@@ -294,6 +306,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
         }
     }
 
+
     /**
      * @dev Emergency transfer USDT to recipient (only owner)
      * @param recipient The recipient address
@@ -311,6 +324,32 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
             "Insufficient USDT balance"
         );
         return usdtToken.transfer(recipient, amount);
+    }
+    
+    /**
+     * @dev Emergency withdraw ALL USDT from specific round (only owner)
+     */
+    function emergencyWithdrawAllFromRound(uint256 roundId) 
+        external 
+        onlyOwner 
+    {
+        uint256 amount = roundLedger[roundId];
+        require(amount > 0, "No balance to withdraw from this round");
+        require(
+            usdtToken.balanceOf(address(this)) >= amount,
+            "Insufficient contract balance"
+        );
+        
+        // Transfer all USDT from core contract to owner
+        require(
+            usdtToken.transfer(owner(), amount),
+            "USDT transfer failed"
+        );
+        
+        // Update core contract's round ledger to zero
+        roundLedger[roundId] = 0;
+        
+        emit EmergencyRoundWithdrawal(roundId, amount, owner());
     }
     
     // Getter functions for arrays
@@ -415,10 +454,9 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
     {
         require(amount > 0, "Invalid amount");
         require(investmentRounds[roundId].exists, "Round does not exist");
-        require(roundRewardPool[roundId] >= amount, "Insufficient reward pool");
+        require(roundLedger[roundId] >= amount, "Insufficient reward pool");
         
         // Deduct from round reward pool
-        roundRewardPool[roundId] -= amount;
         
         // Approve claims contract to transfer on behalf of core
         // This allows the claims contract to call transferFrom

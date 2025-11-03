@@ -441,23 +441,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         super._increaseBalance(account, value);
     }
 
-    /**
-     * @dev Batch check ownership for gas optimization
-     * @param tokenIds Array of token IDs to check
-     * @param user Address to check ownership for
-     * @return ownedTokens Array of booleans indicating ownership
-     */
-    function batchCheckOwnership(uint256[] memory tokenIds, address user) 
-        external 
-        view 
-        returns (bool[] memory ownedTokens) 
-    {
-        ownedTokens = new bool[](tokenIds.length);
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            ownedTokens[i] = (ownerOf(tokenIds[i]) == user);
-        }
-        return ownedTokens;
-    }
 
     /**
      * @dev Batch get investment data for gas optimization
@@ -479,32 +462,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     function transferOwner(address newOwner) public onlyOwner {
         transferOwnership(newOwner);
     }
-
-    
-
-    function _processedDividedEarnings(uint256[] memory tokenIds) internal view returns (uint256 dividendEarned, uint256 dividendPending) {
-        require(tokenIds.length > 0, "No token IDs provided");
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            require(tokenExists[tokenIds[i]], "Token does not exist");
-            InvestmentData memory data = investmentData[tokenIds[i]];
-            bool isRewardClaimed = data.rewardClaimed;
-            bool isRewardRedeemed = data.redeemed;
-            
-            if(isRewardRedeemed){
-                dividendEarned += (data.tokenPrice * data.rewardPercentage)/100;
-            } else {
-                if(isRewardClaimed){
-                 dividendEarned += ((data.tokenPrice * data.rewardPercentage)/100)/2;
-                }else {
-                    dividendPending += ((data.tokenPrice * data.rewardPercentage)/100);
-                }
-            }
-
-        }
-        
-        return (dividendEarned, dividendPending);
-    }
-
 
     function getTokenDetail(uint256 tokenId) 
         external 

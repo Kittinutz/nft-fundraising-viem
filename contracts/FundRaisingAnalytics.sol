@@ -191,8 +191,61 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
     {
         return coreContract.getRoundTokenIds(roundId);
     }
+
+    function getRoundsRewardPool(uint256 roundId) 
+        external 
+        view 
+        returns (uint256) 
+    {
+        return coreContract.roundRewardPool(roundId);
+    }
     
+
+    function getAllRoundRewardAmount() 
+        external 
+        view 
+        returns (uint256 totalRewardPool) 
+    {
+        uint256 totalRounds = coreContract.totalRoundsCreated();
+        totalRewardPool = 0;
+        
+        for (uint256 i = 0; i < totalRounds; i++) {
+            totalRewardPool += coreContract.roundRewardPool(i);
+        }
+
+        return totalRewardPool;
+    }
    
+   function getRoundInvestedAmount(uint256 roundId) 
+        external 
+        view 
+        returns (uint256) 
+    {
+        return coreContract.roundInvestedAmount(roundId);
+    }
+    
+    function getAllRoundStatistics() 
+        external 
+        view 
+        returns (
+            uint256[] memory rewardPools,
+            uint256[] memory investedAmounts,
+            uint256[] memory roundLedger
+        ) 
+    {
+        uint256 totalRounds = coreContract.totalRoundsCreated();
+        rewardPools = new uint256[](totalRounds);
+        investedAmounts = new uint256[](totalRounds);
+        roundLedger = new uint256[](totalRounds);
+        
+        for (uint256 i = 0; i < totalRounds; i++) {
+            rewardPools[i] = coreContract.roundRewardPool(i);
+            investedAmounts[i] = coreContract.roundInvestedAmount(i);
+            roundLedger[i] = coreContract.roundLedger(i);
+        }
+
+        return (rewardPools, investedAmounts, roundLedger);
+    }
 
     function getRoundsDetail(uint256[] memory roundIds) 
         external 
@@ -219,7 +272,20 @@ contract FundRaisingAnalytics is ReentrancyGuard, Ownable {
         uint256[] memory roundIds = _getInvestorRounds(investor);
         return coreContract.getRoundsDetail(roundIds);
     }
- 
+    function getAllRoundsDetail() 
+        external 
+        view 
+        returns (FundRaisingCore.InvestmentRound[] memory) 
+    {
+        uint256 totalRounds = coreContract.totalRoundsCreated();
+        uint256[] memory roundIds = new uint256[](totalRounds);
+        
+        for (uint256 i = 0; i < totalRounds; i++) {
+            roundIds[i] = i;
+        }
+        
+        return coreContract.getRoundsDetail(roundIds);
+    }
     /**
      * @dev FIXED: Get total count of rounds with pagination - O(n) complexity
      */
