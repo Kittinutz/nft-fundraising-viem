@@ -27,7 +27,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId;
         uint256 tokenPrice;
         uint256 rewardPercentage;
-        uint256 totalTokenOpenInvestment;
         uint256 purchaseTimestamp;
         uint256 closeDateInvestment;
         uint256 endDateInvestment;
@@ -52,6 +51,8 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     event MetadataStamped(uint256 indexed tokenId, string metadata);
     event ExecutorRoleUpdated(address indexed account, bool granted);
     event RewardClaimed(uint256 indexed tokenId, address indexed claimer);
+    event NFTRedeemed(uint256 indexed tokenId, address indexed owner);
+    event TransferUnlocked(uint256 indexed tokenId, address indexed owner);
     event TransferLockUpdated(uint256 indexed tokenId, bool locked);
     event BaseURIUpdated(string newBaseURI);
     event TokenURIUpdated(uint256 indexed tokenId, string newTokenURI);
@@ -95,14 +96,12 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId,
         uint256 tokenPrice,
         uint256 rewardPercentage,
-        uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256) {
         require(to != address(0), "Invalid recipient address");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0 && rewardPercentage <= 10000, "Invalid reward percentage");
-        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
@@ -113,7 +112,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
             roundId: roundId,
             tokenPrice: tokenPrice,
             rewardPercentage: rewardPercentage,
-            totalTokenOpenInvestment: totalTokenOpenInvestment,
             purchaseTimestamp: block.timestamp,
             closeDateInvestment: closeDateInvestment,
             endDateInvestment: endDateInvestment,
@@ -138,7 +136,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
      * @param roundId Investment round ID
      * @param tokenPrice Price per token
      * @param rewardPercentage Reward percentage
-     * @param totalTokenOpenInvestment Total tokens per NFT
      * @param closeDateInvestment Close date for investment
      * @param endDateInvestment End date for investment
      * @return tokenIds Array of minted token IDs
@@ -149,7 +146,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         uint256 roundId,
         uint256 tokenPrice,
         uint256 rewardPercentage,
-        uint256 totalTokenOpenInvestment,
         uint256 closeDateInvestment,
         uint256 endDateInvestment
     ) external onlyExecutor whenNotPaused returns (uint256[] memory tokenIds) {
@@ -157,7 +153,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         require(count > 0 && count <= 50, "Invalid count (1-80)");
         require(tokenPrice > 0, "Price must be greater than 0");
         require(rewardPercentage > 0, "Invalid reward percentage");
-        require(totalTokenOpenInvestment > 0, "Total tokens must be greater than 0");
         require(closeDateInvestment > block.timestamp, "Close date must be in future");
         require(endDateInvestment > closeDateInvestment, "End date must be after close date");
         
@@ -172,7 +167,6 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
                 roundId: roundId,
                 tokenPrice: tokenPrice,
                 rewardPercentage: rewardPercentage,
-                totalTokenOpenInvestment: totalTokenOpenInvestment,
                 purchaseTimestamp: purchaseTime,
                 closeDateInvestment: closeDateInvestment,
                 endDateInvestment: endDateInvestment,
@@ -249,7 +243,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         InvestmentData memory data = investmentData[tokenId];
         
         // Can claim if 6 months have passed since purchase and reward not yet claimed
-        return (block.timestamp >= data.purchaseTimestamp + 180 days) && 
+        return (block.timestamp >= data.closeDateInvestment + 180 days) && 
                !data.rewardClaimed && 
                !data.redeemed;
     }
@@ -262,7 +256,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         InvestmentData memory data = investmentData[tokenId];
         
         // Can fully redeem after 1 year and not yet redeemed
-        return (block.timestamp >= data.purchaseTimestamp + 365 days) && 
+        return (block.timestamp >= data.closeDateInvestment + 365 days) && 
                !data.redeemed;
     }
 
@@ -447,30 +441,13 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         super._increaseBalance(account, value);
     }
 
-    /**
-     * @dev Batch check ownership for gas optimization
-     * @param tokenIds Array of token IDs to check
-     * @param user Address to check ownership for
-     * @return ownedTokens Array of booleans indicating ownership
-     */
-    function batchCheckOwnership(uint256[] memory tokenIds, address user) 
-        external 
-        view 
-        returns (bool[] memory ownedTokens) 
-    {
-        ownedTokens = new bool[](tokenIds.length);
-        for (uint256 i = 0; i < tokenIds.length; i++) {
-            ownedTokens[i] = (ownerOf(tokenIds[i]) == user);
-        }
-        return ownedTokens;
-    }
 
     /**
      * @dev Batch get investment data for gas optimization
      * @param tokenIds Array of token IDs to get data for
      * @return investments Array of investment data
      */
-    function batchGetInvestmentData(uint256[] memory tokenIds) 
+    function batchGetTokensDetail(uint256[] memory tokenIds) 
         external 
         view 
         returns (InvestmentData[] memory investments) 
@@ -486,89 +463,31 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         transferOwnership(newOwner);
     }
 
-    /**
-     * @dev Get all NFT tokens owned by a wallet address with pagination
-     * @param walletAddress The address to get NFT tokens for
-     * @param offset Starting position (0-based)
-     * @param limit Maximum number of tokens to return (recommended: 10-50)
-     * @return tokenIds Array of token IDs owned by the address
-     * @return investmentDetails Array of investment data for each token
-     * @return totalTokens Total number of tokens owned by the address
-     * @return totalPages Total number of pages available
-     * @return currentPage Current page number (1-based)
-     * @return hasMore Whether there are more tokens available
-     */
-    function getWalletNFTsPaginated(
-        address walletAddress,
-        uint256 offset,
-        uint256 limit
-    )
-        external
-        view
-        returns (
-            uint256[] memory tokenIds,
-            InvestmentData[] memory investmentDetails,
-            uint256 totalTokens,
-            uint256 totalPages,
-            uint256 currentPage,
-            bool hasMore
-        )
+    function getTokenDetail(uint256 tokenId) 
+        external 
+        view 
+        returns (InvestmentData memory) 
     {
-        require(walletAddress != address(0), "Invalid wallet address");
-        require(limit > 0 && limit <= 100, "Limit must be between 1 and 100");
-        
-        // First, get all token IDs owned by the wallet
-        uint256[] memory allUserTokens = _getAllTokensOwnedBy(walletAddress);
-        totalTokens = allUserTokens.length;
-        
-        require(offset < totalTokens || totalTokens == 0, "Offset exceeds total tokens");
-        
-        // Calculate pagination info
-        totalPages = totalTokens > 0 ? (totalTokens + limit - 1) / limit : 0;
-        currentPage = totalTokens > 0 ? (offset / limit) + 1 : 0;
-        
-        // Calculate actual number of tokens to return
-        uint256 remainingTokens = totalTokens > offset ? totalTokens - offset : 0;
-        uint256 actualLimit = remainingTokens > limit ? limit : remainingTokens;
-        hasMore = offset + actualLimit < totalTokens;
-        
-        if (actualLimit == 0) {
-            return (
-                new uint256[](0),
-                new InvestmentData[](0),
-                totalTokens,
-                totalPages,
-                currentPage,
-                hasMore
-            );
-        }
-        
-        // Initialize arrays with actual size needed
-        tokenIds = new uint256[](actualLimit);
-        investmentDetails = new InvestmentData[](actualLimit);
-        
-        // Populate arrays with paginated data
-        for (uint256 i = 0; i < actualLimit; i++) {
-            uint256 tokenId = allUserTokens[offset + i];
-            tokenIds[i] = tokenId;
-            investmentDetails[i] = investmentData[tokenId];
-        }
-        
-        return (
-            tokenIds,
-            investmentDetails,
-            totalTokens,
-            totalPages,
-            currentPage,
-            hasMore
-        );
+        require(tokenExists[tokenId], "Token does not exist");
+        return investmentData[tokenId];
     }
 
-    /**
-     * @dev Internal function to get all token IDs owned by a specific address
-     * @param owner The address to get tokens for
-     * @return ownedTokens Array of token IDs owned by the address
-     */
+    function getWalletTokensDetail(address walletAddress) 
+        external 
+        view 
+        returns (uint256[] memory tokenIds, InvestmentData[] memory nftsDetail) 
+    {
+        require(walletAddress != address(0), "Invalid wallet address");
+        tokenIds = _getAllTokensOwnedBy(walletAddress);
+        nftsDetail = new InvestmentData[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; i++){
+            nftsDetail[i] = investmentData[tokenIds[i]];
+        }
+
+        return (tokenIds, nftsDetail);
+    }
+
+
     function _getAllTokensOwnedBy(address owner) 
         internal 
         view 
@@ -595,102 +514,72 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         return ownedTokens;
     }
 
-    /**
-     * @dev Get wallet NFT summary (non-paginated) for quick overview
-     * @param walletAddress The address to get summary for
-     * @return totalNFTs Total number of NFTs owned
-     * @return activeInvestments Number of NFTs not yet redeemed
-     * @return redeemedInvestments Number of NFTs already redeemed
-     * @return claimedRewards Number of NFTs with early rewards claimed
-     * @return totalInvestedValue Total value invested across all NFTs
-     * @return totalExpectedRewards Total expected rewards across all NFTs
-     * @return claimableAmount Amount that can be claimed right now
-     */
-    function getWalletNFTSummary(address walletAddress)
-        external
-        view
-        returns (
-            uint256 totalNFTs,
-            uint256 activeInvestments,
-            uint256 redeemedInvestments,
-            uint256 claimedRewards,
-            uint256 totalInvestedValue,
-            uint256 totalExpectedRewards,
-            uint256 claimableAmount
-        )
+    
+    function getAllTokensOwnedBy(address owner) 
+        external 
+        view 
+        returns (uint256[] memory ownedTokens) 
     {
-        require(walletAddress != address(0), "Invalid wallet address");
-        
-        uint256[] memory userTokens = _getAllTokensOwnedBy(walletAddress);
-        totalNFTs = userTokens.length;
-        
-        if (totalNFTs == 0) {
-            return (0, 0, 0, 0, 0, 0, 0);
+        require(owner != address(0), "Invalid owner address");
+        return _getAllTokensOwnedBy(owner);
+    }
+
+    
+
+    /**
+     * @dev Batch mark multiple tokens as reward claimed for gas efficiency
+     * @param tokenIds Array of token IDs to mark as reward claimed
+     */
+    function batchMarkRewardClaimed(uint256[] memory tokenIds) 
+        external 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
+    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            require(!investmentData[tokenId].redeemed, "Token already redeemed");
+            
+            investmentData[tokenId].rewardClaimed = true;
+            emit RewardClaimed(tokenId, ownerOf(tokenId));
         }
-        
-        uint256 currentTime = block.timestamp;
-        
-        for (uint256 i = 0; i < userTokens.length; i++) {
-            InvestmentData memory data = investmentData[userTokens[i]];
-            uint256 principal = data.totalTokenOpenInvestment * data.tokenPrice;
-            uint256 reward = (principal * data.rewardPercentage) / 10000;
-            
-            totalInvestedValue += principal;
-            totalExpectedRewards += reward;
-            
-            if (data.redeemed) {
-                redeemedInvestments++;
-            } else {
-                activeInvestments++;
-            }
-            
-            if (data.rewardClaimed) {
-                claimedRewards++;
-            }
-            
-            // Calculate claimable amount
-            if (!data.redeemed) {
-                uint256 timeSincePurchase = currentTime - data.purchaseTimestamp;
-                
-                if (timeSincePurchase >= 180 days) {
-                    if (timeSincePurchase >= 365 days) {
-                        // Full redemption available
-                        if (data.rewardClaimed) {
-                            claimableAmount += principal + (reward / 2);
-                        } else {
-                            claimableAmount += principal + reward;
-                        }
-                    } else if (!data.rewardClaimed) {
-                        // Early reward available
-                        claimableAmount += (reward / 2);
-                    }
-                }
-            }
-        }
-        
-        return (
-            totalNFTs,
-            activeInvestments,
-            redeemedInvestments,
-            claimedRewards,
-            totalInvestedValue,
-            totalExpectedRewards,
-            claimableAmount
-        );
     }
 
     /**
-     * @dev Get all token IDs owned by a wallet (convenience function, non-paginated)
-     * @param walletAddress The address to get token IDs for
-     * @return tokenIds Array of all token IDs owned by the address
+     * @dev Batch mark multiple tokens as redeemed for gas efficiency
+     * @param tokenIds Array of token IDs to mark as redeemed
      */
-    function getWalletTokenIds(address walletAddress) 
+    function batchMarkAsRedeemed(uint256[] memory tokenIds) 
         external 
-        view 
-        returns (uint256[] memory tokenIds) 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
     {
-        require(walletAddress != address(0), "Invalid wallet address");
-        return _getAllTokensOwnedBy(walletAddress);
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            require(!investmentData[tokenId].redeemed, "Token already redeemed");
+            
+            investmentData[tokenId].redeemed = true;
+            emit NFTRedeemed(tokenId, ownerOf(tokenId));
+        }
+    }
+
+    /**
+     * @dev Batch unlock transfer for multiple tokens for gas efficiency
+     * @param tokenIds Array of token IDs to unlock transfer
+     */
+    function batchUnlockTransfer(uint256[] memory tokenIds) 
+        external 
+        onlyRole(EXECUTOR_ROLE)
+        whenNotPaused 
+    {
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+            uint256 tokenId = tokenIds[i];
+            require(tokenExists[tokenId], "Token does not exist");
+            
+            investmentData[tokenId].transferLocked = false;
+            emit TransferUnlocked(tokenId, ownerOf(tokenId));
+        }
     }
 
     /**

@@ -1,25 +1,83 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
-export default buildModule("FundRaisingContractNFT", (m) => {
+
+export default buildModule("FundRaisingSuite", (m) => {
+  // Deploy DZNFT contract
   const dzNft = m.contract("DZNFT");
+
+  // Deploy MockUSDT contract (for testing)
   const usdt = m.contract("MockUSDT", [
     "Mock USDT",
     "MUSDT",
     18n,
-    10000000n * 10n ** 18n,
+    10000000n * 10n ** 18n, // 10 million USDT initial supply
   ]);
-  const fundRaisingContractNFT = m.contract("FundRaisingContractNFT", [
+
+  // Deploy complete fund raising suite using factory
+  // const deployTx = m.call(factory, "deployFundRaising", [dzNft, usdt]);
+  const FundRaisingCore = m.contract("FundRaisingCore", [dzNft, usdt]);
+  // Extract deployed contract addresses from factory deployment
+
+  const FundRaisingAnalytics = m.contract("FundRaisingAnalytics", [
+    FundRaisingCore,
+  ]);
+  const FundRaisingAdmin = m.contract("FundRaisingAdmin", [FundRaisingCore]);
+
+  // Deploy FundRaisingClaims contract
+  const FundRaisingClaims = m.contract("FundRaisingClaims", [
+    FundRaisingCore,
     dzNft,
     usdt,
   ]);
-  m.call(dzNft, "updateExecutorRole", [fundRaisingContractNFT, true]);
-  m.call(fundRaisingContractNFT, "createInvestmentRound", [
-    "Round 1",
-    500n,
-    6n,
-    1000n,
-    BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
-    BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60),
+
+  // Set authorized claims contract in core
+  m.call(FundRaisingCore, "setAuthorizedClaimsContract", [FundRaisingClaims]);
+
+  // Grant executor roles to deployed contracts
+  m.call(dzNft, "updateExecutorRole", [FundRaisingCore, true]);
+
+  // Create initial investment rounds
+  const currentTime = BigInt(Math.floor(Date.now() / 1000));
+  const thirtyDaysLater = currentTime + BigInt(30 * 24 * 60 * 60);
+  const oneYearLater = currentTime + BigInt(365 * 24 * 60 * 60);
+
+  m.call(FundRaisingCore, "createInvestmentRound", [
+    "Round 1 - Early Birds",
+    500n * 10n ** 18n, // 500 USDT per token
+    6n, // 6% reward
+    1000n, // 1000 tokens available
+    thirtyDaysLater, // Close date
+    oneYearLater, // End date
   ]);
 
-  return { fundRaisingContractNFT };
+  m.call(
+    FundRaisingCore,
+    "createInvestmentRound",
+    [
+      "Round 2 - Public Sale",
+      1000n * 10n ** 18n, // 1000 USDT per token
+      12n, // 12% reward
+      500n, // 500 tokens available
+      thirtyDaysLater,
+      oneYearLater,
+    ],
+    {
+      id: "CreatePublicSaleRound",
+    }
+  );
+  m.call(dzNft, "updateExecutorRole", [FundRaisingCore, true], {
+    id: "MyUnique1",
+  });
+  m.call(dzNft, "updateExecutorRole", [FundRaisingClaims, true], {
+    id: "MyUnique2",
+  });
+
+  // Grant executor role to core contract
+  return {
+    dzNft,
+    usdt,
+    FundRaisingCore,
+    FundRaisingAnalytics,
+    FundRaisingAdmin,
+    FundRaisingClaims,
+  };
 });

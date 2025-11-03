@@ -3,9 +3,14 @@ import type { HardhatUserConfig } from "hardhat/config";
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable } from "hardhat/config";
 import hardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helpers";
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
 
 const config: HardhatUserConfig = {
-  plugins: [hardhatToolboxViemPlugin, hardhatNetworkHelpersPlugin],
+  plugins: [
+    hardhatToolboxViemPlugin,
+    hardhatNetworkHelpersPlugin,
+    hardhatVerify,
+  ],
   solidity: {
     profiles: {
       default: {
@@ -13,9 +18,12 @@ const config: HardhatUserConfig = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1,
+            runs: 200, // Arbitrum benefits from optimization
           },
           viaIR: true,
+
+          // Arbitrum uses EVM version compatible settings
+          evmVersion: "paris", // Recommended for Arbitrum compatibility
         },
       },
       production: {
@@ -23,14 +31,25 @@ const config: HardhatUserConfig = {
         settings: {
           optimizer: {
             enabled: true,
-            runs: 1,
+            runs: 200, // Arbitrum benefits from optimization
           },
           viaIR: true,
+          // Arbitrum uses EVM version compatible settings
+          evmVersion: "paris", // Recommended for Arbitrum compatibility
         },
       },
     },
   },
+  verify: {
+    blockscout: {
+      enabled: false,
+    },
+  },
   networks: {
+    localhost: {
+      type: "edr-simulated",
+      chainType: "op",
+    },
     hardhatMainnet: {
       type: "edr-simulated",
       chainType: "l1",
