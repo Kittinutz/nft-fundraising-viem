@@ -23,12 +23,12 @@ jobs:
             # Navigate to app directory
             echo $PWD
             # Pull latest code
-            if [ -d "frontend-raise-fund" ]; then
-              cd frontend-raise-fund
+            if [ -d "nft-fundraising-viem" ]; then
+              cd nft-fundraising-viem
               git pull origin main
             else
-              git clone git@github.com:Kittinutz/frontend-raise-fund.git
-              cd frontend-raise-fund
+              git clone git@github.com:Kittinutz/nft-fundraising-viem.git
+              cd nft-fundraising-viem
             fi
 
             # Create .env file with secrets
