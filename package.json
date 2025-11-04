@@ -95,7 +95,8 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "skip": "npx hardhat run scripts/addBlockTime.ts --network localhost"
+    "skip": "npx hardhat run scripts/addBlockTime.ts --network localhost",
+    "deploy": "npx hardhat ignition deploy ignition/modules/FundRaisingDeploy.ts --network localhost"
   },
   "keywords": [],
   "author": "",

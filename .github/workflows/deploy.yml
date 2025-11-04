@@ -1,0 +1,49 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main] # or master
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Navigate to app directory
+            echo $PWD
+            # Pull latest code
+            if [ -d "frontend-raise-fund" ]; then
+              cd frontend-raise-fund
+              git pull origin main
+            else
+              git clone git@github.com:Kittinutz/frontend-raise-fund.git
+              cd frontend-raise-fund
+            fi
+
+            # Create .env file with secrets
+            cat > .env << EOF
+            DATABASE_URL=
+            EOF
+
+            # build existing containers
+            docker build . -t hardhat-node
+            docker run -p 8454:8545 hardhat-node -d
+            npm run deploy
+
+
+
+            # Clean up old images
+            docker system prune -af
+
+            # Show running containers
