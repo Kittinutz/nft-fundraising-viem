@@ -46,6 +46,10 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    privateCloud: {
+      type: "http",
+      url: "http://13.229.199.79:8545",
+    },
     localhost: {
       type: "edr-simulated",
       chainType: "op",
