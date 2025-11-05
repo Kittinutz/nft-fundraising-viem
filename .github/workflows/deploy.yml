@@ -38,7 +38,7 @@ jobs:
 
             # build existing containers
             docker build . -t hardhat-node
-            docker run -p 8454:8545 hardhat-node -d
+            docker run -d -p 8454:8545 hardhat-node
 
             npm run deploy
 
