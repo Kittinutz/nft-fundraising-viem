@@ -24,7 +24,7 @@ EXPOSE 8545
 
 # Create a script to run Hardhat node with proper configuration
 RUN echo '#!/bin/sh' > /app/start-node.sh && \
-    echo 'npx hardhat node --hostname 0.0.0.0 --port 8545' >> /app/start-node.sh && \
+    echo 'npx hardhat clean && npx hardhat node --hostname 0.0.0.0 --port 8545' >> /app/start-node.sh && \
     chmod +x /app/start-node.sh
 
 # Set the default command to run Hardhat node
