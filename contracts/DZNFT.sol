@@ -65,7 +65,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
     constructor() ERC721("DZ Investment NFT", "DZNFT") Ownable(msg.sender) {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(EXECUTOR_ROLE, msg.sender);
-        _baseTokenURI = "https://api.dznft.com/metadata/";
+        _baseTokenURI = "https://cyan-occasional-snake-387.mypinata.cloud/ipfs/bafkreidsygedbbdrjd5vkinokrow6u5i3byfe4xufnc56l5msmrgvd766m";
     }
     
 
@@ -371,7 +371,7 @@ contract DZNFT is ERC721, ERC721Enumerable, ERC721Burnable, Ownable, AccessContr
         
         // If there is a base URI, concatenate the tokenId to the base URI
         if (bytes(base).length > 0) {
-            return string(abi.encodePacked(base, _toString(tokenId), ".json"));
+            return base;
         }
         
         // If no base URI, return empty string

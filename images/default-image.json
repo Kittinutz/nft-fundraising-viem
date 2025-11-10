@@ -1,0 +1,6 @@
+{
+  "name": "Zanuzi's Cow",
+  "symbol": "ZNZC",
+  "description": "Initialize your Zanuzi Cow NFT collection with this default metadata file. Update the fields to customize your NFT's name, description, image, and attributes.",
+  "image": "http://18.143.135.219:3000/api/files/cow.png"
+}
