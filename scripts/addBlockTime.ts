@@ -14,7 +14,7 @@ async function main() {
   );
 
   await networkHelpers.mine();
-  await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
+  await networkHelpers.time.increase(60 * 60 * 24 * 30 * 6);
   await networkHelpers.mine();
   console.log("done");
 }

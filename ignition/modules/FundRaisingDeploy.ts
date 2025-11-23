@@ -8,8 +8,8 @@ export default buildModule("FundRaisingSuite", (m) => {
   const usdt = m.contract("MockUSDT", [
     "Mock USDT",
     "MUSDT",
-    18n,
-    10000000n * 10n ** 18n, // 10 million USDT initial supply
+    6n,
+    10000000n * 10n ** 6n, // 10 million USDT initial supply
   ]);
 
   // Deploy complete fund raising suite using factory

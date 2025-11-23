@@ -4,6 +4,10 @@ import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable } from "hardhat/config";
 import hardhatNetworkHelpersPlugin from "@nomicfoundation/hardhat-network-helpers";
 import hardhatVerify from "@nomicfoundation/hardhat-verify";
+import dotenv from "dotenv";
+import { baseSepolia } from "viem/chains";
+
+dotenv.config();
 
 const config: HardhatUserConfig = {
   plugins: [
@@ -48,7 +52,7 @@ const config: HardhatUserConfig = {
   networks: {
     privateCloud: {
       type: "http",
-      url: "http://18.143.135.219:8545",
+      url: "https://rpc.dzabattoir.com",
     },
     localhost: {
       type: "edr-simulated",
@@ -62,11 +66,10 @@ const config: HardhatUserConfig = {
       type: "edr-simulated",
       chainType: "op",
     },
-    sepolia: {
+    baseSepolia: {
       type: "http",
-      chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+      url: "https://sepolia.base.org",
+      accounts: [process.env.PRIVATE_KEY ? process.env.PRIVATE_KEY : ""],
     },
   },
 };

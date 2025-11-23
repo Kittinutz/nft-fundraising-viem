@@ -36,7 +36,7 @@ contract FundRaisingCore is Ownable, ReentrancyGuard, Pausable {
 
     
     // Constants
-    uint256 public constant USDT_DECIMALS = 18;
+    uint256 public constant USDT_DECIMALS = 6;
     uint256 public constant MAX_TOKENS_PER_INVESTMENT = 50;
     // Storage
     mapping(uint256 => InvestmentRound) public investmentRounds;

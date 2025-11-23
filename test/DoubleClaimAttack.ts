@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
-import { formatEther } from "ox/Value";
-import { parseEther } from "viem";
+import { formatUnits, parseUnits } from "viem";
 
 describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async function () {
   const { viem, networkHelpers } = await network.connect();
@@ -27,8 +26,8 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
     mockUSDT = await viem.deployContract("MockUSDT", [
       "Mock USDT",
       "MUSDT",
-      18,
-      parseEther("10000000"),
+      6,
+      parseUnits("10000000", 6),
     ]);
 
     // Deploy DZNFT
@@ -66,12 +65,15 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
 
     // 1. Give attacker USDT and approve spending
     await mockUSDT.write.faucet([], { account: attacker.account });
-    await mockUSDT.write.approve([coreContract.address, parseEther("10000")], {
-      account: attacker.account,
-    });
+    await mockUSDT.write.approve(
+      [coreContract.address, parseUnits("10000", 6)],
+      {
+        account: attacker.account,
+      }
+    );
 
     // 2. Create investment round
-    const tokenPrice = parseEther("100"); // 100 USDT per token
+    const tokenPrice = parseUnits("100", 6); // 100 USDT per token
     const rewardRate = 10; // 10% reward
     const currentTime = BigInt(await getCurrentTimestamp());
 
@@ -80,7 +82,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       "Attack Test Round",
       tokenPrice,
       rewardRate,
-      parseEther("50000"), // total tokens available
+      parseUnits("50000", 6), // total tokens available
       currentTime + 86400n, // close date (1 day)
       currentTime + 86400n * 2n, // end date (2 days) - must be after close date
     ]);
@@ -90,8 +92,15 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
 
     // 3. Add reward pool (owner funds)
     await mockUSDT.write.faucet(); // Give owner USDT
-    await mockUSDT.write.approve([coreContract.address, parseEther("10000")]);
-    await coreContract.write.addRewardToRound([roundId, 1000n]); // Pass 1000 (will be scaled to 1000 * 10^18)
+    await mockUSDT.write.approve(
+      [coreContract.address, parseUnits("10000", 6)],
+      {
+        account: owner.account,
+      }
+    );
+    await coreContract.write.addRewardToRound([roundId, 1000n], {
+      account: owner.account,
+    }); // Pass 1000 (will be scaled to 1000 * 10^18)
 
     // 4. Attacker makes legitimate investment
     console.log(`💰 Attacker investing 1000 USDT (10 tokens)...`);
@@ -116,7 +125,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       attacker.account.address,
     ]);
     console.log(
-      `💳 Attacker initial balance: ${formatEther(initialBalance)} USDT`
+      `💳 Attacker initial balance: ${formatUnits(initialBalance, 6)} USDT`
     );
 
     // 7. 🔴 ATTACK: Multiple reward claims
@@ -146,9 +155,14 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
         if (gainedThisClaim > 0n) {
           successfulClaims++;
           console.log(
-            `   ✅ SUCCESS! Gained: ${formatEther(gainedThisClaim)} USDT`
+            `   ✅ SUCCESS! Gained: ${formatUnits(
+              BigInt(gainedThisClaim),
+              6
+            )} USDT`
           );
-          console.log(`   💰 Total stolen: ${formatEther(totalGained)} USDT`);
+          console.log(
+            `   💰 Total stolen: ${formatUnits(BigInt(totalGained), 6)} USDT`
+          );
         } else {
           console.log(`   ⚠️  No funds gained (possible protection)`);
         }
@@ -179,30 +193,40 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
     console.log(`\n📊 ATTACK RESULTS:`);
     console.log(`🎯 Claim attempts: ${claimAttempts}`);
     console.log(`✅ Successful claims: ${successfulClaims}`);
-    console.log(`💸 Total amount stolen: ${formatEther(totalStolen)} USDT`);
     console.log(
-      `🏦 Remaining reward pool: ${formatEther(remainingRewardPool)} USDT`
+      `💸 Total amount stolen: ${formatUnits(BigInt(totalStolen), 6)} USDT`
+    );
+    console.log(
+      `🏦 Remaining reward pool: ${formatUnits(
+        BigInt(remainingRewardPool),
+        6
+      )} USDT`
     );
 
     // 9. Vulnerability assessment
-    const expectedLegitimateReward = parseEther("50"); // 50% of (10% of 1000 USDT)
+    const expectedLegitimateReward = parseUnits("50", 6); // 50% of (10% of 1000 USDT)
 
     console.log(`\n🔍 VULNERABILITY ANALYSIS:`);
     console.log(
-      `📈 Expected legitimate reward: ${formatEther(
-        expectedLegitimateReward
+      `📈 Expected legitimate reward: ${formatUnits(
+        expectedLegitimateReward,
+        6
       )} USDT`
     );
-    console.log(`💀 Actual amount stolen: ${formatEther(totalStolen)} USDT`);
-
+    console.log(
+      `💀 Actual amount stolen: ${formatUnits(BigInt(totalStolen), 6)} USDT`
+    );
     if (successfulClaims > 1) {
       const multiplier = Number(totalStolen) / Number(expectedLegitimateReward);
       console.log(`🔥 VULNERABILITY CONFIRMED!`);
       console.log(`   - Multiple claims succeeded: ${successfulClaims}`);
       console.log(`   - Reward multiplier: ${multiplier.toFixed(1)}x`);
       if (totalStolen > expectedLegitimateReward) {
-        const extraStolen = totalStolen - expectedLegitimateReward;
-        console.log(`   - User stole ${formatEther(extraStolen)} USDT extra`);
+        const extraStolen =
+          BigInt(totalStolen) - BigInt(expectedLegitimateReward);
+        console.log(
+          `   - User stole ${formatUnits(extraStolen, 6)} USDT extra`
+        );
       }
     } else if (successfulClaims === 1) {
       console.log(`⚠️  Only one claim succeeded (possible protection exists)`);
@@ -255,11 +279,14 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
 
     // Fresh setup for new round
     await mockUSDT.write.faucet([], { account: attacker.account });
-    await mockUSDT.write.approve([coreContract.address, parseEther("10000")], {
-      account: attacker.account,
-    });
+    await mockUSDT.write.approve(
+      [coreContract.address, parseUnits("10000", 6)],
+      {
+        account: attacker.account,
+      }
+    );
 
-    const tokenPrice = parseEther("100");
+    const tokenPrice = parseUnits("100", 6);
     const rewardRate = 10;
     const currentTime = BigInt(await getCurrentTimestamp());
 
@@ -268,7 +295,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       "Phase 2 Attack Round",
       tokenPrice,
       rewardRate,
-      parseEther("50000"),
+      parseUnits("50000", 6),
       currentTime + 86400n, // close in 1 day
       currentTime + 86400n * 2n, // end in 2 days
     ]);
@@ -277,7 +304,10 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
 
     // Add reward pool
     await mockUSDT.write.faucet();
-    await mockUSDT.write.approve([coreContract.address, parseEther("10000")]);
+    await mockUSDT.write.approve([
+      coreContract.address,
+      parseUnits("10000", 6),
+    ]);
     await coreContract.write.addRewardToRound([roundId, 1000n]);
 
     // Attacker invests
@@ -294,8 +324,9 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       attacker.account.address,
     ]);
     console.log(
-      `💳 Attacker balance before Phase 2 claims: ${formatEther(
-        initialBalance
+      `💳 Attacker balance before Phase 2 claims: ${formatUnits(
+        initialBalance,
+        6
       )} USDT`
     );
 
@@ -317,11 +348,14 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
           attacker.account.address,
         ]);
         const gained = newBalance - initialBalance;
-        totalPhase2Gained = gained;
+        totalPhase2Gained = BigInt(gained);
 
         phase2Claims++;
         console.log(
-          `   ✅ SUCCESS! Total gained in Phase 2: ${formatEther(gained)} USDT`
+          `   ✅ SUCCESS! Total gained in Phase 2: ${formatUnits(
+            BigInt(gained),
+            6
+          )} USDT`
         );
       } catch (error: any) {
         console.log(
@@ -340,11 +374,11 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
     console.log(`🎯 Phase 2 claim attempts: 3`);
     console.log(`✅ Successful Phase 2 claims: ${phase2Claims}`);
     console.log(
-      `💸 Total Phase 2 gained: ${formatEther(totalPhase2Gained)} USDT`
+      `💸 Total Phase 2 gained: ${formatUnits(totalPhase2Gained, 6)} USDT`
     );
 
     // Expected Phase 2: remaining 50% reward (50 USDT) + principal (1000 USDT) = 1050 USDT
-    const expectedPhase2 = parseEther("1050");
+    const expectedPhase2 = parseUnits("1050", 6);
 
     if (phase2Claims > 1) {
       console.log(`🚨 PHASE 2 VULNERABILITY CONFIRMED!`);
@@ -356,7 +390,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       console.log(`✅ Phase 2 properly protected - only one claim allowed`);
       if (totalPhase2Gained >= expectedPhase2) {
         console.log(
-          `💰 Correct Phase 2 payout: ${formatEther(totalPhase2Gained)} USDT`
+          `💰 Correct Phase 2 payout: ${formatUnits(totalPhase2Gained, 6)} USDT`
         );
       }
     }

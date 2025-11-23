@@ -1,0 +1,8 @@
+{
+  "FundRaisingSuite#DZNFT": "0x57492d39699315103CB79541614Fa1028cB27038",
+  "FundRaisingSuite#MockUSDT": "0x3Cfaf7cB6075f8256338b895368174dF68514C91",
+  "FundRaisingSuite#FundRaisingCore": "0x07748936499D9EfcD1b987F744aa5E8Ef67FB6b4",
+  "FundRaisingSuite#FundRaisingAdmin": "0xDCa3D2218C8583C7591496Ba380666F3baF31dfA",
+  "FundRaisingSuite#FundRaisingAnalytics": "0x04c78cCF011f01fCb7796B6E01E5A7b38F7154c6",
+  "FundRaisingSuite#FundRaisingClaims": "0x27857D9c74369328ab8cF2b1C627B0790b7F225f"
+}

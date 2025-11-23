@@ -72,8 +72,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     const usdt = await viem.deployContract("MockUSDT", [
       "Mock USDT",
       "MUSDT",
-      18,
-      1000n * 10n ** 18n,
+      6,
+      1000n * 10n ** 6n,
     ]);
     usdtContract = usdt;
 
@@ -173,26 +173,26 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
   // ===== USDT MANAGEMENT TESTS =====
   it("Mint USDT to Wallet should be success", async function () {
     const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
-    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
-    await usdt.write.transfer([wallet3.account.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 6n]);
+    await usdt.write.transfer([wallet3.account.address, 1000n * 10n ** 6n]);
     const balanceOfW3 = await usdt.read.balanceOf([wallet3.account.address]);
     assert.equal(formatEther(balanceOfW3), "1000");
     assert.equal(
       await usdt.read.balanceOf([wallet2.account.address]),
-      1000000000n * 10n ** 18n
+      1000000000n * 10n ** 6n
     );
   });
 
   it("Should allowance success", async function () {
     await usdtContract.write.approve([
       fundRaisingCore.address,
-      500n * 10n ** 18n,
+      500n * 10n ** 6n,
     ]);
     const allowance = await usdtContract.read.allowance([
       wallet1.account.address,
       fundRaisingCore.address,
     ]);
-    assert.equal(allowance, 500n * 10n ** 18n);
+    assert.equal(allowance, 500n * 10n ** 6n);
   });
 
   // ===== INVESTMENT ROUND TESTS =====
@@ -249,10 +249,10 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       BigInt(currentTime + 365 * 24 * 60 * 60),
     ]);
 
-    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 6n]);
     await usdtW2.write.approve([
       fundRaisingCore.address,
-      1000000000n * 10n ** 18n,
+      1000000000n * 10n ** 6n,
     ]);
 
     await coreContractW2.write.investInRound([0n, 2n]);
@@ -289,13 +289,13 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     });
 
     // Mint USDT to wallet2
-    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 6n]);
 
     const currentTime = await getCurrentTimestamp();
 
     await fundRaisingCore.write.createInvestmentRound([
       "Round 1",
-      500n * 10n ** 18n, // 500 USDT per token (in wei)
+      500n * 10n ** 6n, // 500 USDT per token (in wei)
       6n,
       1000n,
       BigInt(currentTime + 30 * 24 * 60 * 60),
@@ -303,7 +303,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
 
     // Approve and invest
-    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     const balanceOfW2 = await usdt.read.balanceOf([wallet2.account.address]);
@@ -346,8 +346,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       "Balance should be near zero"
     );
 
-    await usdt.write.mint([wallet1.account.address, 30n * 10n ** 18n]);
-    await usdt.write.approve([fundRaisingCore.address, 30n * 10n ** 18n]);
+    await usdt.write.mint([wallet1.account.address, 30n * 10n ** 6n]);
+    await usdt.write.approve([fundRaisingCore.address, 30n * 10n ** 6n]);
     await fundRaisingCore.write.addRewardToRound([0n, 30n]);
 
     const fundContractBalance = await usdt.read.balanceOf([
@@ -375,8 +375,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         afterClaimW2Balance
       )}`
     );
-    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
-    await usdt.write.approve([fundRaisingCore.address, 1030n * 10n ** 18n]);
+    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 6n]);
+    await usdt.write.approve([fundRaisingCore.address, 1030n * 10n ** 6n]);
     await fundRaisingCore.write.addRewardToRound([0n, 1030n]);
     await networkHelpers.mine();
     await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
@@ -421,25 +421,25 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     });
 
     // Setup investment
-    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 6n]);
 
     const currentTime = await getCurrentTimestamp();
 
     await fundRaisingCore.write.createInvestmentRound([
       "Round 1",
-      500n * 10n ** 18n, // 500 USDT per token in wei
+      500n * 10n ** 6n, // 500 USDT per token in wei
       6n,
       1000n,
       BigInt(currentTime + 30 * 24 * 60 * 60),
       BigInt(currentTime + 365 * 24 * 60 * 60),
     ]);
 
-    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Add rewards
-    await usdt.write.mint([wallet1.account.address, 1060n * 10n ** 18n]);
-    await usdt.write.approve([fundRaisingCore.address, 1060n * 10n ** 18n]);
+    await usdt.write.mint([wallet1.account.address, 1060n * 10n ** 6n]);
+    await usdt.write.approve([fundRaisingCore.address, 1060n * 10n ** 6n]);
     await fundRaisingCore.write.addRewardToRound([0n, 1060n]);
 
     // Fast forward time 14 months (420+ days after closeDate for 365+ day phase)
@@ -632,7 +632,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     });
 
     // Mint USDT to wallet2 for investment
-    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 6n]);
 
     const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
       client: { wallet: wallet2 },
@@ -644,7 +644,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     // Create investment round
     await fundRaisingCore.write.createInvestmentRound([
       "Transfer Test Round",
-      500n * 10n ** 18n,
+      500n * 10n ** 6n,
       6n,
       1000n,
       BigInt(currentTime + 30 * 24 * 60 * 60),
@@ -652,7 +652,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
 
     // Wallet2 invests 2 tokens
-    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Verify wallet2 has 2 NFTs
@@ -689,8 +689,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     assert.equal(nftBalanceW3After, 2n, "Wallet3 should have 2 NFTs");
 
     // Setup rewards
-    await usdt.write.mint([wallet1.account.address, 30n * 10n ** 18n]);
-    await usdt.write.approve([fundRaisingCore.address, 30n * 10n ** 18n]);
+    await usdt.write.mint([wallet1.account.address, 30n * 10n ** 6n]);
+    await usdt.write.approve([fundRaisingCore.address, 30n * 10n ** 6n]);
     await fundRaisingCore.write.addRewardToRound([0n, 30n]);
 
     // Fast forward time
@@ -713,8 +713,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await networkHelpers.time.increase(60 * 60 * 24 * 30 * 7);
     await networkHelpers.mine();
     // Setup rewards
-    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 18n]);
-    await usdt.write.approve([fundRaisingCore.address, 1030n * 10n ** 18n]);
+    await usdt.write.mint([wallet1.account.address, 1030n * 10n ** 6n]);
+    await usdt.write.approve([fundRaisingCore.address, 1030n * 10n ** 6n]);
     await fundRaisingCore.write.addRewardToRound([0n, 1030n]);
     const beforeClaim2 = await usdt.read.balanceOf([wallet3.account.address]);
     await claimsContractW3.write.claimRewardRound([0n]);
@@ -751,7 +751,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     const nft = await viem.getContractAt("DZNFT", nftContract?.address);
 
     // Setup investment
-    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 6n]);
     const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
       client: { wallet: wallet2 },
     });
@@ -769,7 +769,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
 
     // Invest
-    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
@@ -875,7 +875,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     });
 
     // Setup: Mint USDT to wallet2
-    await usdt.write.mint([wallet2.account.address, 2000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 2000n * 10n ** 6n]);
     const usdtW2 = await viem.getContractAt("MockUSDT", usdtContract?.address, {
       client: { wallet: wallet2 },
     });
@@ -885,7 +885,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     // Create investment round
     await fundRaisingCore.write.createInvestmentRound([
       "Transfer Lock Test Round",
-      500n * 10n ** 18n,
+      500n * 10n ** 6n,
       6n,
       1000n,
       BigInt(currentTime + 30 * 24 * 60 * 60),
@@ -893,7 +893,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
 
     // Wallet2 invests 2 tokens
-    await usdtW2.write.approve([fundRaisingCore.address, 2000n * 10n ** 18n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 2000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // Get token IDs
@@ -1050,8 +1050,8 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     ]);
 
     // 2. Invest via Core
-    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 18n]);
-    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 18n]);
+    await usdt.write.mint([wallet2.account.address, 1000n * 10n ** 6n]);
+    await usdtW2.write.approve([fundRaisingCore.address, 1000n * 10n ** 6n]);
     await coreContractW2.write.investInRound([0n, 2n]);
 
     // 3. Check data via Analytics
@@ -1119,7 +1119,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         "Mock USDT",
         "MUSDT",
         18,
-        1000n * 10n ** 18n,
+        1000n * 10n ** 6n,
       ]);
       const coreContract = await viem.deployContract("FundRaisingCore", [
         nft.address,
@@ -1151,7 +1151,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         "Mock USDT",
         "MUSDT",
         18,
-        1000n * 10n ** 18n,
+        1000n * 10n ** 6n,
       ]);
       const coreContract = await viem.deployContract("FundRaisingCore", [
         nft.address,
@@ -1181,7 +1181,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
         "Mock USDT",
         "MUSDT",
         18,
-        1000n * 10n ** 18n,
+        1000n * 10n ** 6n,
       ]);
       const coreContract = await viem.deployContract("FundRaisingCore", [
         nft.address,

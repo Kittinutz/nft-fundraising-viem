@@ -22,7 +22,7 @@ describe("Debug Analytics", async function () {
       "Mock USDT",
       "MUSDT",
       18,
-      1000n * 10n ** 18n,
+      1000n * 10n ** 6n,
     ]);
     usdtContract = usdt;
 
