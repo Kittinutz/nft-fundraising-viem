@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { before, beforeEach, describe, it } from "node:test";
 import { network } from "hardhat";
 import { formatUnits, parseEther, parseUnits } from "viem";
+async function getCurrentTimestamp(): Promise<number> {
+  const currentBlock = await publicClient.getBlock();
+  return Number(currentBlock.timestamp);
+}
 
 describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
   const { viem, networkHelpers } = await network.connect();
@@ -49,6 +53,9 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
     // Setup permissions
     await dzNFT.write.updateExecutorRole([coreContract.address, true]);
     await dzNFT.write.updateExecutorRole([claimsContract.address, true]);
+    await coreContract.write.setAuthorizedClaimsContract([
+      claimsContract.address,
+    ]);
 
     console.log("✅ Contracts deployed successfully");
   });
@@ -70,15 +77,15 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
       const roundId = 0n;
       const tokenPrice = parseUnits("100", 6); // 100 USDT per token
       const rewardRate = 10n; // 10% reward
-      const currentTime = BigInt(await getCurrentTimestamp());
-
+      const currentBlock = await publicClient.getBlock();
+      const currentTime = Number(currentBlock.timestamp);
       await coreContract.write.createInvestmentRound([
         "Test Round",
         tokenPrice,
         rewardRate,
         1000, // max investment
-        currentTime + 86400n, // ends in 1 day
-        currentTime + 86400n * 2n, // close date
+        BigInt(currentTime + 86400 * 30),
+        BigInt(currentTime + 86400 * 365),
       ]);
 
       // 2. Add reward pool to round
@@ -94,7 +101,6 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
       });
 
       // 3. Attacker invests in round
-      const investmentAmount = parseUnits("1000", 6); // 1000 USDT
       await coreContract.write.investInRound([roundId, 10n], {
         // Buy 10 tokens
         account: attacker.account,
@@ -111,7 +117,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
       assert.ok(attackerNFTs.length > 0, "Attacker should have NFTs");
 
       // 4. Fast forward to claim period (180 days after close)
-      await networkHelpers.time.increase(180 * 24 * 60 * 60); // 180 days
+      await networkHelpers.time.increase(60 * 60 * 24 * (180 + 30)); // 180 days
 
       // 5. Check initial balances
       const initialBalance = await mockUSDT.read.balanceOf([
@@ -133,6 +139,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
         const balance1 = await mockUSDT.read.balanceOf([
           attacker.account.address,
         ]);
+
         const gained1 = balance1 - initialBalance;
         console.log(
           `   ✅ SUCCESS - Gained: ${formatUnits(BigInt(gained1), 6)} USDT`
@@ -194,7 +201,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
       ]);
       const totalGained = finalBalance - initialBalance;
 
-      console.log("\n📊 ATTACK RESULTS:");
+      console.log("\n📊 ATTACK RESULTS1:");
       console.log(
         `💸 Total stolen: ${formatUnits(BigInt(totalGained), 6)} USDT`
       );
@@ -238,14 +245,15 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
           )} USDT extra`
         );
       }
-      console.log({
+      console.log("------>", {
         totalGained,
         expectedLegitimateReward,
       });
+
       // The test passes if attacker gained more than they should have
       assert.ok(
-        totalGained > expectedLegitimateReward,
-        "Attack should steal more than legitimate reward"
+        BigInt(totalGained) <= expectedLegitimateReward,
+        "Attacker cannot claim reward"
       );
 
       console.log(
@@ -268,17 +276,17 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
       );
 
       // Setup new round
-      const roundId = 2n;
+      const roundId = 0n;
       const tokenPrice = parseUnits("100", 6);
-      const currentTime = BigInt(await getCurrentTimestamp());
+      const currentTime = await getCurrentTimestamp();
 
       await coreContract.write.createInvestmentRound([
         "Attack Round",
         tokenPrice,
         10,
-        currentTime + 86400n,
-        currentTime + 86400n * 2n,
-        10,
+        1000n,
+        BigInt(currentTime + 30 * 24 * 60 * 60),
+        BigInt(currentTime + 365 * 24 * 60 * 60),
       ]);
 
       await mockUSDT.write.faucet();
@@ -292,7 +300,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Attack Proof", async function () {
         account: attacker.account,
       });
 
-      await networkHelpers.time.increase(180 * 24 * 60 * 60);
+      await networkHelpers.time.increase((180 + 30) * 24 * 60 * 60);
 
       const initialBalance = await mockUSDT.read.balanceOf([
         attacker.account.address,

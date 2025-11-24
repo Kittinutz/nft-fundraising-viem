@@ -308,9 +308,24 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
       coreContract.address,
       parseUnits("10000", 6),
     ]);
-    await coreContract.write.addRewardToRound([roundId, 1000n]);
+    const roundTotal = await coreContract.read.totalRoundsCreated();
+    console.log(`Total rounds created: ${roundTotal}`);
+    await coreContract.write.addRewardToRound([roundId, 1100n]);
+    const beforeBalance = await mockUSDT.read.balanceOf([
+      attacker.account.address,
+    ]);
+    const rewardPool = await coreContract.read.roundRewardPool([roundId]);
+    console.log(
+      `🏦 Reward pool for round ${roundId}: ${formatUnits(rewardPool, 6)} USDT`
+    );
 
-    // Attacker invests
+    console.log(
+      `💳 Attacker balance before invest Phase 2 claims: ${formatUnits(
+        beforeBalance,
+        6
+      )} USDT`
+    );
+
     console.log(`💰 Attacker investing for Phase 2 test...`);
     await coreContract.write.investInRound([roundId, 10n], {
       account: attacker.account,
@@ -359,7 +374,7 @@ describe("🔴 CRITICAL: ClaimRewardRound Double Claiming Attack Proof", async f
         );
       } catch (error: any) {
         console.log(
-          `   ❌ FAILED: ${
+          `   ❌ issuerrrrr---> FAILED: ${
             error.shortMessage || error.message || "Unknown error"
           }`
         );

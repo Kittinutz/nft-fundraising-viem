@@ -4,7 +4,7 @@ import { before, beforeEach, describe, it } from "node:test";
 import { network } from "hardhat";
 import { formatEther } from "ox/Value";
 import dayjs from "dayjs";
-import { parseEther } from "viem";
+import { formatUnits, parseEther, parseUnits } from "viem";
 
 describe("FundRaising Split Architecture - Complete Test Suite", async function () {
   const { viem, networkHelpers } = await network.connect();
@@ -126,7 +126,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     );
     const usdt = await viem.getContractAt("MockUSDT", usdtContract?.address);
     const balanceOf = await usdt.read.balanceOf([wallet1.account.address]);
-    assert.equal(formatEther(balanceOf), "1000");
+    assert.equal(formatUnits(balanceOf, 6), "1000");
   });
 
   it("Fund Contract Should be executor", async function () {
@@ -176,7 +176,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await usdt.write.mint([wallet2.account.address, 1000000000n * 10n ** 6n]);
     await usdt.write.transfer([wallet3.account.address, 1000n * 10n ** 6n]);
     const balanceOfW3 = await usdt.read.balanceOf([wallet3.account.address]);
-    assert.equal(formatEther(balanceOfW3), "1000");
+    assert.equal(formatUnits(balanceOfW3, 6), "1000");
     assert.equal(
       await usdt.read.balanceOf([wallet2.account.address]),
       1000000000n * 10n ** 6n
@@ -324,13 +324,13 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Owner withdraws fund
     const ownerUsdt1 = await usdt.read.balanceOf([wallet1.account.address]);
-    const ownerBalance1 = Number(formatEther(ownerUsdt1));
+    const ownerBalance1 = Number(formatUnits(ownerUsdt1, 6));
     assert(ownerBalance1 == 1000, `Expected ~1000, got ${ownerBalance1}`);
 
     await fundRaisingCore.write.withdrawFund([0n]);
 
     const ownerUsdt = await usdt.read.balanceOf([wallet1.account.address]);
-    const ownerBalance = Number(formatEther(ownerUsdt));
+    const ownerBalance = Number(formatUnits(ownerUsdt, 6));
 
     assert(
       ownerBalance == 2000,
@@ -353,7 +353,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     const fundContractBalance = await usdt.read.balanceOf([
       fundRaisingCore.address,
     ]);
-    assert.equal(formatEther(fundContractBalance), "30");
+    assert.equal(formatUnits(fundContractBalance, 6), "30");
 
     // Fast forward time 7 months (210+ days after closeDate for 180+ day phase)
     await networkHelpers.mine();
@@ -370,7 +370,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Phase 1: Should receive 30 USDT (50% of reward)
     assert(
-      Number(formatEther(afterClaimW2Balance)) === 30,
+      Number(formatUnits(afterClaimW2Balance, 6)) === 30,
       `Should receive 30 USDT reward at 180 days, got ${formatEther(
         afterClaimW2Balance
       )}`
@@ -391,7 +391,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Phase 1: Should receive 30 USDT (50% of reward)
     assert(
-      Number(formatEther(afterClaimW2Balance2)) === 1060,
+      Number(formatUnits(afterClaimW2Balance2, 6)) === 1060,
       `Should receive 30 USDT reward at 180 days, got ${formatEther(
         afterClaimW2Balance2
       )}`
@@ -458,7 +458,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     // Phase 2: Should receive full reward (60 USDT) + principal (1000 USDT) = 1060 USDT
     assert(
-      Number(formatEther(afterClaimW2Balance)) === 1060,
+      Number(formatUnits(afterClaimW2Balance, 6)) === 1060,
       `Should receive 1060 USDT (60 reward + 1000 principal) at 365 days, got ${formatEther(
         afterClaimW2Balance
       )}`
@@ -705,7 +705,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
 
     assert(afterClaim > beforeClaim, "Wallet3 should receive rewards");
     assert(
-      Number(formatEther(afterClaim)) == 30,
+      Number(formatUnits(afterClaim, 6)) == 30,
       "Wallet3 should receive 30 USDT"
     );
     // Fast forward time
@@ -720,11 +720,11 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
     await claimsContractW3.write.claimRewardRound([0n]);
     const afterClaim2 = await usdt.read.balanceOf([wallet3.account.address]);
     assert(
-      Number(formatEther(beforeClaim2)) == 30,
+      Number(formatUnits(beforeClaim2, 6)) == 30,
       "Wallet3 should receive 30 USDT"
     );
     assert(
-      Number(formatEther(afterClaim2)) == 1060,
+      Number(formatUnits(afterClaim2, 6)) == 1060,
       "Wallet3 should receive 1060 USDT"
     );
     console.log("\n=== Split Architecture - NFT Transfer Test Results ===");
@@ -1127,7 +1127,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       ]);
 
       // Transfer USDT to core
-      await usdt.write.transfer([coreContract.address, parseEther("100")]);
+      await usdt.write.transfer([coreContract.address, parseUnits("100", 6)]);
 
       const balanceBefore = await usdt.read.balanceOf([coreContract.address]);
       assert(balanceBefore > 0n, "Core should have USDT");
@@ -1135,7 +1135,7 @@ describe("FundRaising Split Architecture - Complete Test Suite", async function 
       // Call emergencyTransferUSDT
       const transferResult = await coreContract.write.emergencyTransferUSDT([
         wallet1.account.address,
-        parseEther("50"),
+        parseUnits("50", 6),
       ]);
 
       const balanceAfter = await usdt.read.balanceOf([coreContract.address]);
